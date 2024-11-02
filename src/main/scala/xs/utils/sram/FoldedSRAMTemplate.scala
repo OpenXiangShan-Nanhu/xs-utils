@@ -70,6 +70,7 @@ class FoldedSRAMTemplate[T <: Data](
     val realRidx = if(holdRead) holdRidx else ridx
     io.r.resp.data(w) := Mux1H(UIntToOH(realRidx, width), wayData)
   }
+  io.r.resp.valid := array.io.r.resp.valid
 
   private val wen = io.w.req.valid
   private val wdata = VecInit(Seq.fill(width)(io.w.req.bits.data).flatten)
