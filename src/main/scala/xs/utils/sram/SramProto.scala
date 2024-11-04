@@ -41,6 +41,11 @@ abstract class SramArray(
   @public val pwctl = if(powerCtl) Some(IO(new SramPowerCtl)) else None
   mbist.foreach(dontTouch(_))
   pwctl.foreach(dontTouch(_))
+  val pwrBlock = if(powerCtl) {
+    pwctl.get.ret || pwctl.get.stop
+  } else {
+    false.B
+  }
 
   @public val RW0 = if(singlePort) {
     Some(IO(new Bundle() {
@@ -94,25 +99,23 @@ class SramArray1P(
   if(maskSegments > 1) {
     val dataType = Vec(maskSegments, UInt((width / maskSegments).W))
     val array = SyncReadMem(depth, dataType)
-    RW0.get.rdata := array
-      .readWrite(
+    RW0.get.rdata := Mux(pwrBlock, 0.U, array.readWrite(
         RW0.get.addr,
         RW0.get.wdata.asTypeOf(dataType),
         RW0.get.wmask.asBools,
-        RW0.get.en,
+        RW0.get.en & !pwrBlock,
         RW0.get.wmode,
         RW0.get.clk
-      )
-      .asUInt
+      ).asUInt)
   } else {
     val array = SyncReadMem(depth, UInt(width.W))
-    RW0.get.rdata := array.readWrite(
+    RW0.get.rdata := Mux(pwrBlock, 0.U, array.readWrite(
       RW0.get.addr,
       RW0.get.wdata,
-      RW0.get.en,
+      RW0.get.en & !pwrBlock,
       RW0.get.wmode,
       RW0.get.clk
-    )
+    ))
   }
 }
 
@@ -129,16 +132,16 @@ class SramArray2P(
   if(maskSegments > 1) {
     val dataType = Vec(maskSegments, UInt((width / maskSegments).W))
     val array = SyncReadMem(depth, dataType, SyncReadMem.WriteFirst)
-    when(W0.get.en) {
+    when(W0.get.en & !pwrBlock) {
       array.write(W0.get.addr, W0.get.data.asTypeOf(dataType), W0.get.mask.asBools, W0.get.clk)
     }
-    R0.get.data := array.read(R0.get.addr, R0.get.en, R0.get.clk).asUInt
+    R0.get.data := Mux(pwrBlock, 0.U, array.read(R0.get.addr, R0.get.en & !pwrBlock, R0.get.clk).asUInt)
   } else {
     val array = SyncReadMem(depth, UInt(width.W))
-    when(W0.get.en) {
+    when(W0.get.en & !pwrBlock) {
       array.write(W0.get.addr, W0.get.data, W0.get.clk)
     }
-    R0.get.data := array.read(R0.get.addr, R0.get.en, R0.get.clk)
+    R0.get.data := Mux(pwrBlock, 0.U, array.read(R0.get.addr, R0.get.en & !pwrBlock, R0.get.clk))
   }
 }
 

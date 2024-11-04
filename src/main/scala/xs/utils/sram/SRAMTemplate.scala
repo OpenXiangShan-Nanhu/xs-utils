@@ -112,13 +112,16 @@ class SRAMTemplate[T <: Data](
   })
   require(latency >= 1)
   require(setup >= 1)
-
+  private val pwctl = if(powerCtl || setup > 1) {
+    Some(Wire(new SramPowerCtl))
+  } else {
+    None
+  }
   private val hold = if(extraHold) setup + 1 else setup
   private val rcg = Module(new MbistClockGateCell(hold > 1))
   private val wcg = if(!singlePort) Some(Module(new MbistClockGateCell(hold > 1))) else None
   private val dataWidth = gen.getWidth * way
   private val nodeNum = sp.mbistNodeNum
-  private val realMaskBits = sp.sramMaskBits
   private val (mbistBd, array, vname) = SramHelper.genRam(
     sp,
     set,
@@ -128,7 +131,7 @@ class SRAMTemplate[T <: Data](
     latency,
     hasMbist,
     io.broadcast,
-    io.pwctl,
+    pwctl,
     reset,
     rcg.out_clock,
     wcg.map(_.out_clock),
@@ -246,6 +249,20 @@ class SRAMTemplate[T <: Data](
     cg.mbist.writeen := mbistBd.we
     cg.E := ckWen
   })
+  
+  if(powerCtl) {
+    pwctl.get := io.pwctl.get
+  } else if(setup > 1) {
+    val activeLength = setup + latency + 1
+    val activeReg = RegInit(0.U(activeLength.W))
+    when(ramWen | ramRen) {
+      activeReg := Fill(activeLength, true.B)
+    }.elsewhen(activeReg.orR) {
+      activeReg := Cat(false.B, activeReg) >> 1
+    }
+    pwctl.get.ret := !activeReg.orR
+    pwctl.get.stop := false.B
+  }
 
   private val concurrentRW = io.w.req.fire && io.r.req.fire && io.w.req.bits.setIdx === io.r.req.bits.setIdx
   private val doBypass = if(bypassWrite) concurrentRW else false.B
