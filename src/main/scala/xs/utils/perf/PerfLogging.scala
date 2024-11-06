@@ -21,7 +21,7 @@ import chisel3._
 import org.chipsalliance.cde.config.Parameters
 
 trait HasPerfLogging {
-  this: Module =>
+  this: RawModule with ImplicitClock with ImplicitReset =>
   val p: Parameters
   private val perfDump = WireInit(false.B)
   private val perfClean = WireInit(false.B)
