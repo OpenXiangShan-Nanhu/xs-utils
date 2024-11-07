@@ -112,6 +112,18 @@ trait HasCircularQueuePtrHelper {
     val compare = left.value < right.value
     differentFlag ^ compare
   }
+
+  def isNotAfter[T <: CircularQueuePtr[T]](left: T, right: T): Bool = {
+    val differentFlag = left.flag ^ right.flag
+    val compare = left.value <= right.value
+    differentFlag ^ compare
+  }
+
+  def isNotBefore[T <: CircularQueuePtr[T]](left: T, right: T): Bool = {
+    val differentFlag = left.flag ^ right.flag
+    val compare = left.value >= right.value
+    differentFlag ^ compare
+  }
 }
 
 // Should only be used when left and right are continuous pointers.

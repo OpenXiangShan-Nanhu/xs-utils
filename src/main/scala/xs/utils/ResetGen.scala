@@ -45,7 +45,7 @@ class ResetGen(SYNC_NUM: Int = 2) extends Module {
 trait ResetNode
 
 case class ModuleNode(mod: Module) extends ResetNode
-
+case class CellNode(reset: Reset) extends ResetNode
 case class ResetGenNode(children: Seq[ResetNode]) extends ResetNode
 
 object ResetGen {
@@ -54,7 +54,7 @@ object ResetGen {
     if(dft.isDefined) {
       resetSync.dft := dft.get
     } else {
-      resetSync.dft := 0.U
+      resetSync.dft := 0.U.asTypeOf(new DFTResetSignals)
     }
     resetSync.o_reset
   }
@@ -64,6 +64,8 @@ object ResetGen {
       resetTree match {
         case ModuleNode(mod) =>
           mod.reset := reset
+        case CellNode(r) =>
+          r := reset
         case ResetGenNode(children) =>
           val next_rst = Wire(Reset())
           withReset(reset){
@@ -72,7 +74,7 @@ object ResetGen {
             if(dft.isDefined) {
               resetGen.dft := dft.get
             } else {
-              resetGen.dft := 0.U
+              resetGen.dft := 0.U.asTypeOf(new DFTResetSignals)
             }
           }
           children.foreach(child => apply(child, next_rst, dft, sim))
@@ -91,7 +93,7 @@ object ResetGen {
           if(dft.isDefined) {
             resetGen.dft := dft.get
           } else {
-            resetGen.dft := 0.U
+            resetGen.dft := 0.U.asTypeOf(new DFTResetSignals)
           }
         }
       }
