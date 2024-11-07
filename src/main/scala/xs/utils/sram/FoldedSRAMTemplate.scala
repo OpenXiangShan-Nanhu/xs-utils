@@ -14,6 +14,8 @@ class FoldedSRAMTemplate[T <: Data](
   extraReset: Boolean = false,
   holdRead: Boolean = false,
   bypassWrite: Boolean = false,
+  useBitmask:  Boolean = false,
+  multicycle: Int = 1,
   hasMbist: Boolean = false,
   powerCtl: Boolean = false,
   foundry: String = "Unknown",
@@ -21,7 +23,7 @@ class FoldedSRAMTemplate[T <: Data](
   extends Module {
   val io = IO(new Bundle {
     val r = Flipped(new SRAMReadBus(gen, set, way))
-    val w = Flipped(new SRAMWriteBus(gen, set, way))
+    val w = Flipped(new SRAMWriteBus(gen, set, way, useBitmask))
     val pwctl = if(powerCtl) Some(new SramPowerCtl) else None
   })
   val extra_reset = if(extraReset) Some(IO(Input(Bool()))) else None
@@ -44,7 +46,9 @@ class FoldedSRAMTemplate[T <: Data](
       holdRead = holdRead,
       bypassWrite = bypassWrite,
       singlePort = singlePort,
+      setup = multicycle,
       hasMbist = hasMbist,
+      useBitmask = useBitmask,
       powerCtl = powerCtl,
       foundry = foundry,
       sramInst = sramInst
@@ -83,5 +87,10 @@ class FoldedSRAMTemplate[T <: Data](
       VecInit(Seq.tabulate(width * way)(n => (n / way).U === widthIdx && io.w.req.bits.waymask.get(n % way))).asUInt
   }
   require(wmask.getWidth == way * width)
-  array.io.w.apply(wen, wdata, waddr, wmask)
+  
+  if (useBitmask) {
+    array.io.w.apply(wen, wdata, waddr, wmask, io.w.req.bits.bitmask.get)
+  } else {
+    array.io.w.apply(wen, wdata, waddr, wmask)
+  }
 }

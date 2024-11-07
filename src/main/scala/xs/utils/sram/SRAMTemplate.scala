@@ -33,20 +33,54 @@ class SRAMBundleA(val set: Int) extends Bundle {
   }
 }
 
-class SRAMBundleAW[T <: Data](private val gen: T, set: Int, val way: Int = 1) extends SRAMBundleA(set) {
-  val data = Output(Vec(way, gen))
-  val waymask = if(way > 1) Some(Output(UInt(way.W))) else None
+class SRAMBundleAW[T <: Data](
+    private val gen: T,
+    set: Int,
+    val way: Int = 1,
+    val useBitmask: Boolean = false ) 
+  extends SRAMBundleA(set) {
+  private val dataWidth = gen.getWidth
+  val data:    Vec[T] = Output(Vec(way, gen))
+  val waymask: Option[UInt] = if (way > 1) Some(Output(UInt(way.W))) else None
+  // flattened_bitmask is the flattened form of [waymask, bitmask], can be use directly to mask memory
+  val flattened_bitmask: Option[UInt] = if (useBitmask) Some(Output(UInt((way * dataWidth).W))) else None
+  // bitmask is the original bitmask passed from parameter
+  val bitmask: Option[UInt] = if (useBitmask) Some(Output(UInt((dataWidth).W))) else None
 
   def apply(data: Vec[T], setIdx: UInt, waymask: UInt): SRAMBundleAW[T] = {
+    require(
+      waymask.getWidth == way,
+      s"waymask width does not equal nWays, waymask width: ${waymask.getWidth}, nWays: ${way}"
+    )
     super.apply(setIdx)
     this.data := data
     this.waymask.foreach(_ := waymask)
     this
   }
 
+  def apply(data: Vec[T], setIdx: UInt, waymask: UInt, bitmask: UInt): SRAMBundleAW[T] = {
+    require(useBitmask, "passing bitmask when not using bitmask")
+    require(
+      bitmask.getWidth == dataWidth,
+      s"bitmask width does not equal data width, bitmask width: ${bitmask.getWidth}, data width: ${dataWidth}"
+    )
+    apply(data, setIdx, waymask)
+    this.flattened_bitmask.foreach(
+      _ :=
+        VecInit.tabulate(way * dataWidth)(n => waymask(n / dataWidth) && bitmask(n % dataWidth)).asUInt
+    )
+    this.bitmask.foreach(_ := bitmask)
+    this
+  }
+
   // this could only be used when waymask is onehot or nway is 1
   def apply(data: T, setIdx: UInt, waymask: UInt): SRAMBundleAW[T] = {
     apply(VecInit(Seq.fill(way)(data)), setIdx, waymask)
+    this
+  }
+
+  def apply(data: T, setIdx: UInt, waymask: UInt, bitmask: UInt): SRAMBundleAW[T] = {
+    apply(VecInit(Seq.fill(way)(data)), setIdx, waymask, bitmask)
     this
   }
 }
@@ -67,8 +101,13 @@ class SRAMReadBus[T <: Data](private val gen: T, val set: Int, val way: Int = 1)
   }
 }
 
-class SRAMWriteBus[T <: Data](private val gen: T, val set: Int, val way: Int = 1) extends Bundle {
-  val req = Decoupled(new SRAMBundleAW(gen, set, way))
+class SRAMWriteBus[T <: Data](
+  private val gen: T,
+  val set:         Int,
+  val way:         Int = 1,
+  val useBitmask:  Boolean = false)
+    extends Bundle {
+  val req = Decoupled(new SRAMBundleAW(gen, set, way, useBitmask))
 
   def apply(valid: Bool, data: Vec[T], setIdx: UInt, waymask: UInt): SRAMWriteBus[T] = {
     this.req.bits.apply(data = data, setIdx = setIdx, waymask = waymask)
@@ -76,8 +115,19 @@ class SRAMWriteBus[T <: Data](private val gen: T, val set: Int, val way: Int = 1
     this
   }
 
+  def apply(valid: Bool, data: Vec[T], setIdx: UInt, waymask: UInt, bitmask: UInt): SRAMWriteBus[T] = {
+    this.req.bits.apply(data = data, setIdx = setIdx, waymask = waymask, bitmask = bitmask)
+    this.req.valid := valid
+    this
+  }
+
   def apply(valid: Bool, data: T, setIdx: UInt, waymask: UInt): SRAMWriteBus[T] = {
     apply(valid, VecInit(Seq.fill(way)(data)), setIdx, waymask)
+    this
+  }
+
+  def apply(valid: Bool, data: T, setIdx: UInt, waymask: UInt, bitmask: UInt): SRAMWriteBus[T] = {
+    apply(valid, VecInit(Seq.fill(way)(data)), setIdx, waymask, bitmask)
     this
   }
 }
@@ -92,6 +142,7 @@ class SRAMTemplate[T <: Data](
   extraReset: Boolean = false,
   holdRead: Boolean = false,
   bypassWrite: Boolean = false,
+  useBitmask:  Boolean = false,
   setup:Int = 1, // ask your leader to changed this
   latency: Int = 1, // ask your leader to changed this
   extraHold: Boolean = false,  //ask your leader to changed this
@@ -103,10 +154,12 @@ class SRAMTemplate[T <: Data](
   val sramInst: String = "STANDARD")
   extends Module {
   private val inputMcp = setup > 1 || extraHold
-  val sp = SramInfo(gen.getWidth, way, hasMbist)
+  private val actualWay = if (useBitmask) gen.getWidth * way else way
+  private val elementWidth = if (useBitmask) 1 else gen.getWidth
+  val sp = SramInfo(elementWidth, actualWay, hasMbist)
   val io = IO(new Bundle {
     val r = Flipped(new SRAMReadBus(gen, set, way))
-    val w = Flipped(new SRAMWriteBus(gen, set, way))
+    val w = Flipped(new SRAMWriteBus(gen, set, way, useBitmask))
     val pwctl = if(powerCtl) Some(new SramPowerCtl) else None
     val broadcast = if(explictBist || hasMbist) Some(new SramBroadcastBundle) else None
   })
@@ -163,7 +216,9 @@ class SRAMTemplate[T <: Data](
   }
 
   private val wen = Mux(resetState, resetWen, io.w.req.fire)
-  private val wmask = Mux(resetState, Fill(way, true.B), io.w.req.bits.waymask.getOrElse("b1".U))
+  private val _wmask =
+  if (useBitmask) io.w.req.bits.flattened_bitmask.getOrElse("b1".U) else io.w.req.bits.waymask.getOrElse("b1".U)
+  private val wmask = Mux(resetState, Fill(actualWay, true.B), _wmask)
   private val wdata = Mux(resetState, 0.U, io.w.req.bits.data.asUInt)
   private val waddr = Mux(resetState, resetAddr, io.w.req.bits.setIdx)
   private val ren = io.r.req.fire

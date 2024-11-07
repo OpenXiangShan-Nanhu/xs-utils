@@ -116,6 +116,7 @@ object OneHot {
   def UIntToOH1(x: UInt): UInt = UIntToOH1(x, (1 << x.getWidth) - 1)
   def checkOneHot(in: Bits): Unit = assert(PopCount(in) <= 1.U)
   def checkOneHot(in: Iterable[Bool]): Unit = assert(PopCount(in) <= 1.U)
+  def OHToUIntStartOne(in: UInt): UInt = OHToUInt(in << 1)
 }
 
 object LowerMask {
@@ -203,6 +204,16 @@ object GetOddBits {
   }
 }
 
+object GetRemBits {
+  def apply(div: Int)(input: UInt): Seq[UInt] = {
+    (0 until div).map(rem => VecInit((0 until input.getWidth / div).map(i => input(div * i + rem))).asUInt)
+  }
+  def reverse(div: Int)(input: Seq[UInt]): Seq[UInt] = {
+    (0 until div).map(rem => VecInit((0 until input(rem).getWidth * div).map(i => {
+      if (i % div == rem) input(rem)(i / div) else 0.B
+    })).asUInt)
+  }
+}
 object XORFold {
   def apply(input: UInt, resWidth: Int): UInt = {
     require(resWidth > 0)
@@ -369,6 +380,23 @@ object SelectOne {
       case "center" => new CenterSelectOne(bits, max_sel)
       case _ => throw new IllegalArgumentException(s"unknown select policy")
     }
+  }
+}
+
+/**
+ * SelectFirstN: select n index from bit mask, low bit has high priority.
+ */
+object SelectFirstN {
+  def apply(in: UInt, n: Int, valid: UInt) = {
+    val sels = Wire(Vec(n, UInt(in.getWidth.W)))
+    var mask = in 
+
+    for (i <- 0 until n) {
+      sels(i) := PriorityEncoderOH(mask) & Fill(in.getWidth, valid(i))
+      mask = mask & ~sels(i)
+    }
+
+    sels
   }
 }
 
