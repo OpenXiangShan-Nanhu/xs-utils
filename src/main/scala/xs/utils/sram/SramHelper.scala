@@ -119,7 +119,7 @@ object SramHelper {
     latency: Int,
     bist: Boolean,
     broadcast: Option[SramBroadcastBundle],
-    pwctl: Option[SramPowerCtl],
+    pwctl: Option[GenericSramPowerCtl],
     reset: Reset,
     rclk: Clock,
     wclk: Option[Clock],
@@ -162,8 +162,7 @@ object SramHelper {
       Mbist.addRamNode(mbist, sp.mbistArrayIds)
     }
     if(pwctl.isDefined) {
-      array.pwctl.get.ret := pwctl.get.ret
-      array.pwctl.get.stop := pwctl.get.stop | reset.asBool
+      array.pwctl.get := pwctl.get
     }
     (mbist, array, vname)
   }

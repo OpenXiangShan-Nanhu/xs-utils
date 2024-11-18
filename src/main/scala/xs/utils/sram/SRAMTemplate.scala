@@ -132,6 +132,11 @@ class SRAMWriteBus[T <: Data](
   }
 }
 
+class SramPowerCtl extends Bundle {
+  val ret = Input(Bool())
+  val stop = Input(Bool())
+}
+
 // WARNING: this SRAMTemplate assumes the SRAM lib itself supports holdRead.
 class SRAMTemplate[T <: Data](
   gen: T,
@@ -166,7 +171,7 @@ class SRAMTemplate[T <: Data](
   require(latency >= 1)
   require(setup >= 1)
   private val pwctl = if(powerCtl || setup > 1) {
-    Some(Wire(new SramPowerCtl))
+    Some(Wire(new GenericSramPowerCtl))
   } else {
     None
   }
@@ -304,19 +309,27 @@ class SRAMTemplate[T <: Data](
     cg.mbist.writeen := mbistBd.we
     cg.E := ckWen
   })
-  
-  if(powerCtl) {
-    pwctl.get := io.pwctl.get
-  } else if(setup > 1) {
-    val activeLength = setup + latency + 1
-    val activeReg = RegInit(0.U(activeLength.W))
-    when(ramWen | ramRen) {
-      activeReg := Fill(activeLength, true.B)
-    }.elsewhen(activeReg.orR) {
-      activeReg := Cat(false.B, activeReg) >> 1
+
+  if(pwctl.isDefined) {
+    if(setup > 1) {
+      val activeLength = setup + latency + 1
+      val activeReg = RegInit(0.U(activeLength.W))
+      when(ramWen | ramRen) {
+        activeReg := Fill(activeLength, true.B)
+      }.elsewhen(activeReg.orR) {
+        activeReg := Cat(false.B, activeReg) >> 1
+      }
+      pwctl.get.light_sleep := activeReg
+    } else {
+      pwctl.get.light_sleep := false.B
     }
-    pwctl.get.ret := !activeReg.orR
-    pwctl.get.stop := false.B
+    if(powerCtl) {
+      pwctl.get.deep_sleep := io.pwctl.get.ret
+      pwctl.get.shut_down := io.pwctl.get.stop
+    } else {
+      pwctl.get.deep_sleep := false.B
+      pwctl.get.shut_down := false.B
+    }
   }
 
   private val concurrentRW = io.w.req.fire && io.r.req.fire && io.w.req.bits.setIdx === io.r.req.bits.setIdx

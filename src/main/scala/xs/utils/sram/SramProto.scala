@@ -20,9 +20,10 @@ class SramBroadcastBundle extends Bundle {
   val cgen = Input(Bool())
 }
 
-class SramPowerCtl extends Bundle {
-  val ret = Input(Bool())
-  val stop = Input(Bool())
+class GenericSramPowerCtl extends Bundle {
+  val light_sleep = Input(Bool())
+  val deep_sleep = Input(Bool())
+  val shut_down = Input(Bool())
 }
 
 @instantiable
@@ -38,11 +39,11 @@ abstract class SramArray(
   extends RawModule {
   require(width % maskSegments == 0)
   @public val mbist = if(hasMbist) Some(IO(new SramMbistIO)) else None
-  @public val pwctl = if(powerCtl) Some(IO(new SramPowerCtl)) else None
+  @public val pwctl = if(powerCtl) Some(IO(new GenericSramPowerCtl)) else None
   mbist.foreach(dontTouch(_))
   pwctl.foreach(dontTouch(_))
   val pwrBlock = if(powerCtl) {
-    pwctl.get.ret || pwctl.get.stop
+    pwctl.get.light_sleep || pwctl.get.deep_sleep || pwctl.get.shut_down
   } else {
     false.B
   }
