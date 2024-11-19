@@ -319,7 +319,7 @@ class SRAMTemplate[T <: Data](
       }.elsewhen(activeReg.orR) {
         activeReg := Cat(false.B, activeReg) >> 1
       }
-      pwctl.get.light_sleep := activeReg
+      pwctl.get.light_sleep := !activeReg
     } else {
       pwctl.get.light_sleep := false.B
     }
