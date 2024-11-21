@@ -12,5 +12,6 @@ case class DebugOptions
   EnablePerfDebug: Boolean = true,
   UseDRAMSim: Boolean = false,
   EnableTopDown: Boolean = false,
-  EnableChiselDB: Boolean = false
+  EnableChiselDB: Boolean = false,
+  EnableLuaScoreBoard: Boolean = false
 )
