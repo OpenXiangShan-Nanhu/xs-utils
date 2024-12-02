@@ -185,7 +185,7 @@ class SRAMTemplate[T <: Data](
     set,
     !singlePort,
     setup,
-    hold,
+    if(extraHold) 1 else 0,
     latency,
     hasMbist,
     io.broadcast,
