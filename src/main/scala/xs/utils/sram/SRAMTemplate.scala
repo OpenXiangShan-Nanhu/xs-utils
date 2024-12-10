@@ -334,15 +334,15 @@ class SRAMTemplate[T <: Data](
 
   private val concurrentRW = io.w.req.fire && io.r.req.fire && io.w.req.bits.setIdx === io.r.req.bits.setIdx
   private val doBypass = if(bypassWrite) concurrentRW else false.B
-  private val doBypassReg = RegEnable(doBypass, false.B, io.r.req.fire)
-  private val wmaskReg = RegEnable(wmask, 0.U, doBypass & io.r.req.fire)
+  private val doBypassReg = RegEnable(doBypass, false.B, io.w.req.fire)
+  private val wmaskReg = RegEnable(wmask, 0.U, io.w.req.fire)
   private val segment = dataWidth / wmask.getWidth
   private val bypassMask = Cat(Seq.tabulate(wmask.getWidth)(i => wmaskReg(i / segment).asBool).reverse)
   private val keepMask = Cat(Seq.tabulate(wmask.getWidth)(i => !wmaskReg(i / segment).asBool).reverse)
   private val rdataReg = Reg(UInt(dataWidth.W))
   private val bypassData = bypassMask & rdataReg | keepMask & ramRdata
   if(bypassWrite) {
-    when(doBypass) {
+    when(io.w.req.fire) {
       rdataReg := wdata.asUInt
     }.elsewhen(respReg(0)) {
       rdataReg := Mux(doBypassReg, bypassData, ramRdata)
