@@ -5,6 +5,7 @@ import chisel3.experimental.hierarchy.core.IsLookupable
 import chisel3.util._
 import chisel3.util.experimental.BoringUtils
 import xs.utils.FileRegisters
+import chisel3.experimental.{SourceInfo, SourceLine}
 
 class HwAsrtBundle(width:Int) extends Valid[UInt](UInt(width.W))
 
@@ -26,16 +27,23 @@ object HardwareAssertion {
   private var hwaNodesSeq = Seq[HwAsrtNode]()
   private var topNode:Option[HwAsrtNode] = None
 
-  def apply(cond:Bool, desc:String):Unit = {
+  def apply(cond:Bool, desc:String)(implicit s: SourceInfo):Unit = {
+    // Hardware
     val assertion = Wire(new HwAsrtBundle(log2Ceil(assertId + 2)))
     assertion.valid := RegNext(!cond, false.B)
     assertion.bits := RegEnable(assertId.U, !cond)
     val node = HwAsrtNode(assertion, Seq((assertId, desc)), 0)
     hwaNodesSeq = hwaNodesSeq :+ node
     assertId = assertId + 1
+    // EDA
+    val debugInfo = s match {
+      case SourceLine(filename, line, col) => s"[$filename:$line:$col]: "
+      case _ => ""
+    }
+    assert(cond, debugInfo + desc)
   }
 
-  def apply(cond:Bool, en:Bool, desc:String):Unit = apply(Mux(en, cond, true.B), desc)
+  def apply(cond:Bool, en:Bool, desc:String)(implicit s: SourceInfo):Unit = apply(Mux(en, cond, true.B), desc)
 
   def placePipe(level:Int, moduleTop:Boolean = false):HwAsrtNode = {
     val children = hwaNodesSeq.filter(_.level < level)
@@ -84,6 +92,8 @@ object HardwareAssertion {
         .map(d => s"assertion ${d._1}: ${d._2}")
         .reduce((a, b) => a + '\n' + b)
       FileRegisters.add(dir, "hardware_assertion.txt", str, dontCarePrefix = true)
+    } else {
+      require(false)
     }
   }
 }
