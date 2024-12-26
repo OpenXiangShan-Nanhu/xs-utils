@@ -71,6 +71,12 @@ object HardwareAssertion {
    */
   def withEn(cond:Bool, en:Bool, desc:Printable, user:UInt*)(implicit s: SourceInfo):Unit = apply(Mux(en, cond, true.B), desc, Cat(user.reverse))
 
+  def checkTimeout(cnt: UInt, desc:Printable, user:UInt*)(implicit s: SourceInfo):Unit = {
+    // At 3Ghz, 1ms equals 300_0000 cycles.
+    apply(cnt < 3000000.U, desc, Cat(user.reverse))
+    require(cnt.getWidth >= log2Ceil(3000000))
+  }
+
   def placePipe(level:Int, moduleTop:Boolean = false):HwAsrtNode = {
     val children = hwaNodesSeq.filter(_.level < level)
     val maxId = children.flatMap(_.desc).map(_._1).max
