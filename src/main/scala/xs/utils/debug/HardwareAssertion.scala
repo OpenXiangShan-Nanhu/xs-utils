@@ -10,7 +10,7 @@ import chisel3.experimental.{SourceInfo, SourceLine}
 class HwAsrtBundle(width:Int) extends Bundle {
   val valid = Output(Bool())
   val id    = Output(UInt(width.W))
-  val user  = Output(UInt(10.W))
+  val user  = Output(UInt(48.W))
 }
 
 case class HwAsrtNode (
@@ -35,15 +35,15 @@ object HardwareAssertion {
    * @param desc optional format string to print when the assertion fires
    * @param user optional bits to output some message to module interface
    * @note desc must be defined as Printable(e.g. cf"xxx") to print chisel-type values
-   * @note user bits total width cant be over 16.W
+   * @note user bits total width cant be over 48.W
    */
   def apply(cond:Bool, desc:Printable, user:UInt*)(implicit s: SourceInfo):Unit = {
     // EDA
-    val debugInfo = s match {
+    val cfSourceInfo = s match {
       case SourceLine(filename, line, col) => cf"$filename:$line:$col: "
       case _ => cf""
     }
-    assert(cond, debugInfo + desc)
+    assert(cond, cfSourceInfo + desc)
     // Hardware
     val assertion = Wire(new HwAsrtBundle(log2Ceil(assertId + 2)))
     val _user = Cat(user.reverse)
@@ -51,7 +51,11 @@ object HardwareAssertion {
     assertion.valid := RegNext(!cond, false.B)
     assertion.id    := RegEnable(assertId.U, !cond)
     assertion.user  := RegEnable(_user, !cond)
-    val node = HwAsrtNode(assertion, Seq((assertId, desc.toString)), 0)
+    val sSourceInfo = s match {
+      case SourceLine(filename, line, col) => s"$filename:$line:$col: "
+      case _ => s""
+    }
+    val node = HwAsrtNode(assertion, Seq((assertId, sSourceInfo + desc)), 0)
     hwaNodesSeq = hwaNodesSeq :+ node
     assertId = assertId + 1
   }
@@ -63,7 +67,7 @@ object HardwareAssertion {
    * @param desc optional format string to print when the assertion fires
    * @param user optional bits to output some message to module interface
    * @note desc must be defined as Printable(e.g. cf"xxx") to print chisel-type values
-   * @note user bits total width cant be over 16.W
+   * @note user bits total width cant be over 48.W
    */
   def withEn(cond:Bool, en:Bool, desc:Printable, user:UInt*)(implicit s: SourceInfo):Unit = apply(Mux(en, cond, true.B), desc, Cat(user.reverse))
 
