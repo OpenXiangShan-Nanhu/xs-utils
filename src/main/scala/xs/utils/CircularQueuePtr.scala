@@ -38,14 +38,10 @@ class CircularQueuePtr[T <: CircularQueuePtr[T]](val entries: Int) extends Bundl
     if(isPow2(entries)){
       new_ptr := (Cat(this.flag, this.value) + v).asTypeOf(new_ptr)
     } else {
-      val new_value = this.value +& v
-      val diff = Cat(0.U(1.W), new_value).asSInt - Cat(0.U(1.W), entries.U.asTypeOf(new_value)).asSInt
-      val reverse_flag = diff >= 0.S
-      new_ptr.flag := Mux(reverse_flag, !this.flag, this.flag)
-      new_ptr.value := Mux(reverse_flag,
-        diff.asUInt,
-        new_value
-      )
+      val newVal = this.value +& v
+      val overFlow = newVal > (entries - 1).U
+      new_ptr.flag := overFlow ^ this.flag
+      new_ptr.value := Mux(overFlow, newVal - entries.U, newVal)
     }
     new_ptr
   }
