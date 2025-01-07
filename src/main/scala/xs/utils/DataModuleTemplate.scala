@@ -185,11 +185,15 @@ class DataModuleTemplate[T <: Data](
   // read ports
   for (i <- 0 until numRead) {
     val bypass_en = perReadPortBypassEnable.map(_(i)).getOrElse(true)
-    val read_by = io.wen.zip(io.waddr).map(w => w._1 && w._2 === io.raddr(i) && bypass_en.B)
+    val read_by = io.wen.zip(io.waddr).map(w => w._1 && w._2 === io.raddr(i))
     val addr_dec = UIntToOH(io.raddr(i), numEntries)
-    when (VecInit(read_by).asUInt.orR) {
-      io.rdata(i) := Mux1H(read_by, io.wdata)
-    } .otherwise {
+    if (bypass_en) {
+      when (VecInit(read_by).asUInt.orR) {
+        io.rdata(i) := Mux1H(read_by, io.wdata)
+      } .otherwise {
+        io.rdata(i) := Mux1H(addr_dec, data)
+      }
+    } else {
       io.rdata(i) := Mux1H(addr_dec, data)
     }
   }
