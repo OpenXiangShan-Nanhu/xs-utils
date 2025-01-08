@@ -49,7 +49,6 @@ class MimoQueue[T <: Data]
   enqIsCompact: Boolean = false,
   deqReduceFanout: Boolean = false
 ) extends Module with HasCircularQueuePtrHelper {
-  require(size >= 2 * enqNum)
   private class MimoQueuePtr extends CircularQueuePtr[MimoQueuePtr](size)
   private object MimoQueuePtr {
     def apply(f:Boolean, v:Int):MimoQueuePtr = {
@@ -108,14 +107,15 @@ class MimoQueue[T <: Data]
 
   for(i <- 0 until deqNum) {
     if(deqReduceFanout) {
-      deqDriver.get.io.deq(i).valid := deqPtrVecNext(i) < enqPtr
-      deqDriver.get.io.deq(i).bits := array(deqPtrVecNext(i).value)
+      deqDriver.get.io.in(i).valid := deqPtrVecNext(i) < enqPtr
+      deqDriver.get.io.in(i).bits := array(deqPtrVecNext(i).value)
       val enqHitsVec = io.enq.zip(enqAddrVec).map(e => e._1.fire && e._2 === deqPtrVecNext(i).value)
       val enqUpdateEn = Cat(enqHitsVec).orR
       when(enqUpdateEn) {
         deqDriver.get.io.in(i).valid := true.B
         deqDriver.get.io.in(i).bits := Mux1H(enqHitsVec, io.enq.map(_.bits))
       }
+      io.deq(i) <> deqDriver.get.io.deq(i)
     } else {
       io.deq(i).valid := deqPtrVec(i) < enqPtr
       io.deq(i).bits := array(deqPtrVec(i).value)
@@ -142,5 +142,5 @@ class MimoQueue[T <: Data]
   for(i <- 0 until deqNum) {
     assert(Mux(i.U < deqReadyNum, io.deq(i).ready, !io.deq(i).ready), "deq readies should be continuous from the lowest port")
   }
-  assert(emptyEntries === distanceBetween(deqPtr, enqPtr))
+  assert(emptyEntries === (size.U - distanceBetween(enqPtr, deqPtr)))
 }
