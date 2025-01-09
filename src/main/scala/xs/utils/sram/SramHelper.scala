@@ -17,24 +17,24 @@ case class SramInfo (
   bist:Boolean
 ) {
   private val ew = dataBits
-  private lazy val isNto1 = ew > maxMbistDataWidth
+  private val isNto1 = ew > maxMbistDataWidth
   //** ******implement mbist interface node(multiple nodes for one way)******
-  private lazy val (mbistNodeNumForEachWay, mbistNodeNumNto1) = getNodeNumForEachWayAndNodeNum_Nto1(ew, way, maxMbistDataWidth)
-  private lazy val maskWidthNto1 = 1
-  private lazy val mbistDataWidthNto1 = (ew + mbistNodeNumForEachWay - 1) / mbistNodeNumForEachWay
+  private val (mbistNodeNumForEachWay, mbistNodeNumNto1) = getNodeNumForEachWayAndNodeNum_Nto1(ew, way, maxMbistDataWidth)
+  private val maskWidthNto1 = 1
+  private val mbistDataWidthNto1 = (ew + mbistNodeNumForEachWay - 1) / mbistNodeNumForEachWay
   //** *******implement mbist interface node(one node for multiple ways)******
-  private lazy val (wayNumForEachNode, mbistNodeNum1toN) = getWayNumForEachNodeAndNodeNum_1toN(ew, way, maxMbistDataWidth)
-  private lazy val mbistDataWidth1toN = wayNumForEachNode * ew
-  private lazy val maskWidth1toN = wayNumForEachNode
+  private val (wayNumForEachNode, mbistNodeNum1toN) = getWayNumForEachNodeAndNodeNum_1toN(ew, way, maxMbistDataWidth)
+  private val mbistDataWidth1toN = wayNumForEachNode * ew
+  private val maskWidth1toN = wayNumForEachNode
 
-  lazy val mbistNodeNum = if(isNto1) mbistNodeNumNto1 else mbistNodeNum1toN
-  lazy val mbistDataWidth = if(isNto1) mbistDataWidthNto1 else mbistDataWidth1toN
-  lazy val mbistMaskWidth = if(isNto1) maskWidthNto1 else maskWidth1toN
-  lazy val mbistArrayIds = if(bist) Seq.tabulate(mbistNodeNum)(idx => getDomainID + idx) else Seq.fill(mbistNodeNum)(0)
-  lazy val bitWrite = way != 1
-  lazy val sramMaskBits = if(isNto1) mbistNodeNum else way
-  lazy val sramDataBits = way * dataBits
-  lazy val sramSegBits = sramDataBits / sramMaskBits
+  val mbistNodeNum = if(isNto1) mbistNodeNumNto1 else mbistNodeNum1toN
+  val mbistDataWidth = if(isNto1) mbistDataWidthNto1 else mbistDataWidth1toN
+  val mbistMaskWidth = if(isNto1) maskWidthNto1 else maskWidth1toN
+  val mbistArrayIds = if(bist) Seq.tabulate(mbistNodeNum)(idx => getDomainID + idx) else Seq.fill(mbistNodeNum)(0)
+  val bitWrite = way != 1
+  val sramMaskBits = if(isNto1) mbistNodeNum else way
+  val sramDataBits = way * dataBits
+  val sramSegBits = sramDataBits / sramMaskBits
   if(bist) {
     val addId = if(isNto1) mbistNodeNumNto1 else mbistNodeNum1toN
     increaseNodeID(addId)
