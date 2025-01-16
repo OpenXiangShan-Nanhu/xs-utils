@@ -132,17 +132,17 @@ object SramHelper {
 
     val (array, vname) = SramProto(rclk, !dp, set, sp.sramDataBits, sp.sramMaskBits, setup, hold, latency, wclk, bist || broadcast.isDefined, suffix, pwctl.isDefined)
     val bdParam = Ram2MbistParams(
-        sp,
-        set,
-        !dp,
-        vname,
-        "",
-        foundry,
-        sramInst,
-        latency - 1,
-        "None",
-        template
-      )
+      sp,
+      set,
+      !dp,
+      vname,
+      "",
+      foundry,
+      sramInst,
+      0,
+      "None",
+      template
+    )
     val mbist = Wire(new Ram2Mbist(bdParam))
     mbist := DontCare
     mbist.selectedOH := Fill(mbist.selectedOH.getWidth, 1.U(1.W))

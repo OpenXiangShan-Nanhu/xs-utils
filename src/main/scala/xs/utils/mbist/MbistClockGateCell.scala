@@ -18,11 +18,6 @@ class CgDftBundle extends Bundle {
 }
 
 class MbistClockGateCell(mcpCtl:Boolean) extends Module {
-  val mbist = IO(new Bundle {
-    val writeen = Input(Bool())
-    val readen = Input(Bool())
-    val req = Input(Bool())
-  })
   val E = IO(Input(Bool()))
   val dft = IO(new CgDftBundle)
   val out_clock = IO(Output(Clock()))
@@ -32,10 +27,10 @@ class MbistClockGateCell(mcpCtl:Boolean) extends Module {
   CG.io.CK := clock
 
   if(mcpCtl) {
-    CG.io.E := Mux(mbist.req, mbist.readen | mbist.writeen, E) && !dft.ram_mcp_hold
+    CG.io.E := E && !dft.ram_mcp_hold
     out_clock := Mux(dft.ram_aux_ckbp, dft.ram_aux_clk.asClock, CG.io.Q)
   } else {
-    CG.io.E := Mux(mbist.req, mbist.readen | mbist.writeen, E)
+    CG.io.E := E
     out_clock := CG.io.Q
   }
 }

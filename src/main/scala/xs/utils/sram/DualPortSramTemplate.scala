@@ -47,7 +47,7 @@ class DualPortSramTemplate[T <: Data](
     sramInst = sramInst
   ))
 
-  private val mbp = Ram2MbistParams(sp, set, singlePort = true, ram.sramName, "", foundry, sramInst, setup + latency - 2, "None", this)
+  private val mbp = Ram2MbistParams(sp, set, singlePort = true, ram.sramName, "", foundry, sramInst, if(hold > 1) 1 else 0, "None", this)
   val io = IO(new Bundle{
     val wreq = Flipped(Decoupled(new DpSramWrite(gen, set, way)))
     val rreq = Flipped(Decoupled(UInt(log2Ceil(set).W)))

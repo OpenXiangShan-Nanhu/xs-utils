@@ -292,21 +292,14 @@ class SRAMTemplate[T <: Data](
   }
 
   rcg.dft.fromBroadcast(brcBd)
-  rcg.mbist.req := mbistBd.ack
-  rcg.mbist.readen := mbistBd.re
   if(singlePort) {
-    rcg.mbist.writeen := mbistBd.we
     rcg.E := ckRen | ckWen
   } else {
-    rcg.mbist.writeen := false.B
     rcg.E := ckRen
   }
 
   wcg.foreach(cg => {
     cg.dft.fromBroadcast(brcBd)
-    cg.mbist.req := mbistBd.ack
-    cg.mbist.readen := false.B
-    cg.mbist.writeen := mbistBd.we
     cg.E := ckWen
   })
 

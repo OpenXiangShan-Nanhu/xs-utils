@@ -30,7 +30,7 @@ class MbistCsvGen(val intf: InterfaceInfo, val pip: MbistPipeline, val csvName: 
           contents += removeSubstring(p.holder.pathName) + p.nodeSuffix + ","
           contents += p.vname + ".sv,"
           contents += id.toString + ","
-          contents += (depth * 2 + p.latency).toString + ","
+          contents += (depth * 2 + p.pipeDepth).toString + ","
           contents += (if (p.bitWrite) "true," else "false,")
           contents += p.bankRange + ","
           contents += p.nodeNum + ","

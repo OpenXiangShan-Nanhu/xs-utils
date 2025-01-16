@@ -88,7 +88,7 @@ case class Ram2MbistParams(
   nodeSuffix: String,
   foundry:    String,
   sramInst:   String,
-  latency:    Int = 0,
+  pipeDepth:  Int = 0,
   bankRange:  String = "None",
   holder:     RawModule) {
   val dataWidth = sramParams.mbistDataWidth
@@ -109,7 +109,7 @@ case class Ram2MbistParams(
         nodeSuffix + s"_node$idx",
         foundry,
         sramInst,
-        latency,
+        pipeDepth,
         bankRange,
         holder
       )
