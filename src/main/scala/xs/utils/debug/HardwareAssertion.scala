@@ -4,17 +4,16 @@ import chisel3._
 import chisel3.experimental.hierarchy.core.IsLookupable
 import chisel3.util._
 import chisel3.util.experimental.BoringUtils
-import xs.utils.FileRegisters
+import xs.utils.{FileRegisters, ResetRRArbiter}
 import chisel3.experimental.{SourceInfo, SourceLine}
 
 class HwAsrtBundle(width:Int) extends Bundle {
-  val valid = Output(Bool())
   val id    = Output(UInt(width.W))
   val user  = Output(UInt(48.W))
 }
 
 case class HwAsrtNode (
-  assertion: HwAsrtBundle,
+  assertion: DecoupledIO[HwAsrtBundle],
   desc: Seq[(Int, String)],
   level: Int
 )
@@ -45,12 +44,13 @@ object HardwareAssertion {
     }
     assert(cond, cfSourceInfo + desc)
     // Hardware
-    val assertion = Wire(new HwAsrtBundle(log2Ceil(assertId + 2)))
+    val hwaQ = Module(new Queue(new HwAsrtBundle(log2Ceil(assertId + 2)), entries = 2))
+    val assertion = hwaQ.io.deq
     val _user = Cat(user.reverse)
-    require(_user.getWidth <= assertion.user.getWidth, s"The bits width of the args([UInt[${_user.getWidth}.W]]) exceeds the upper limit(UInt[${assertion.user.getWidth}.W])")
-    assertion.valid := RegNext(!cond, false.B)
-    assertion.id    := RegEnable(assertId.U, !cond)
-    assertion.user  := RegEnable(_user, !cond)
+    require(_user.getWidth <= assertion.bits.user.getWidth, s"The bits width of the args([UInt[${_user.getWidth}.W]]) exceeds the upper limit(UInt[${assertion.bits.user.getWidth}.W])")
+    hwaQ.io.enq.valid      := !cond
+    hwaQ.io.enq.bits.id    := assertId.U
+    hwaQ.io.enq.bits.user  := _user
     val sSourceInfo = s match {
       case SourceLine(filename, line, col) => s"$filename:$line:$col: "
       case _ => s""
@@ -81,37 +81,34 @@ object HardwareAssertion {
     val children = hwaNodesSeq.filter(_.level < level)
     val maxId = children.flatMap(_.desc).map(_._1).max
     val idBits = log2Ceil(maxId + 2)
-    val assertion = Wire(new HwAsrtBundle(idBits))
-    val hwaBds = Seq.fill(children.length)(Wire(new HwAsrtBundle(idBits)))
+    val hwaQ = Module(new Queue(new HwAsrtBundle(idBits), entries = 2))
+    val hwaArb = Module(new ResetRRArbiter(new HwAsrtBundle(idBits), children.size))
+    val assertion = hwaQ.io.deq
     hwaNodesSeq = hwaNodesSeq.filterNot(_.level < level)
     require(children.nonEmpty)
     for(idx <- children.indices) {
-      hwaBds(idx) := BoringUtils.bore(children(idx).assertion)
+      hwaArb.io.in(idx) <> BoringUtils.bore(children(idx).assertion)
     }
     val desc = children.flatMap(_.desc)
-    val valid = Cat(hwaBds.map(_.valid)).orR
-    val id = PriorityMux(hwaBds.map(_.valid), hwaBds.map(_.id))
-    val user = PriorityMux(hwaBds.map(_.valid), hwaBds.map(_.user))
+    hwaQ.io.enq <> hwaArb.io.out
     val node = HwAsrtNode(assertion, desc, level)
     if(!moduleTop) {
       hwaNodesSeq = hwaNodesSeq :+ node
     } else {
       assertId = 0
     }
-    assertion.valid := RegNext(valid, false.B)
-    assertion.id    := RegEnable(id, valid)
-    assertion.user  := RegEnable(user, valid)
     node
   }
 
-  def fromDomain(aio:HwAsrtBundle, dinfo:DomainInfo, level:Int, domainName:String):HwAsrtNode = {
+  def fromDomain(aio:DecoupledIO[HwAsrtBundle], dinfo:DomainInfo, level:Int, domainName:String):HwAsrtNode = {
     val maxId = dinfo.desc.map(_._1).max + assertId
-    val newAssertion = Wire(new HwAsrtBundle(log2Ceil(maxId + 2)))
-    newAssertion.valid := RegNext(aio.valid, false.B)
-    newAssertion.id := RegEnable(aio.id + assertId.U, aio.valid)
-    newAssertion.user := RegEnable(aio.user, aio.valid)
+    val hwaQ = Module(new Queue(new HwAsrtBundle(log2Ceil(maxId + 2)), entries = 2))
+    hwaQ.io.enq.valid := aio.valid
+    hwaQ.io.enq.bits.id := aio.bits.id + assertId.U
+    hwaQ.io.enq.bits.user := aio.bits.user
+    aio.ready := hwaQ.io.enq.ready
     val newDesc = dinfo.desc.map(d => (d._1 + assertId, domainName + " " + d._2))
-    val node = HwAsrtNode(assertion = newAssertion, desc = newDesc, level = level)
+    val node = HwAsrtNode(assertion = hwaQ.io.deq, desc = newDesc, level = level)
     hwaNodesSeq = hwaNodesSeq :+ node
     assertId = newDesc.map(_._1).max + 1
     node
@@ -119,6 +116,7 @@ object HardwareAssertion {
 
   def setTopNode(n: HwAsrtNode):Unit = {
     topNode = Some(n)
+    assertId = 0
   }
 
   def release(dir: String):Unit = {
