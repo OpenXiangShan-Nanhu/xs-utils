@@ -59,6 +59,7 @@ object HardwareAssertion {
     hwaNodesSeq = hwaNodesSeq :+ node
     assertId = assertId + 1
   }
+  def apply(cond:Bool, user:UInt*)(implicit s: SourceInfo):Unit = apply(cond, cf"", Cat(user.reverse))
 
   /** Apply an assertion in the hardware design with an enable signal.
    *
@@ -70,14 +71,36 @@ object HardwareAssertion {
    * @note user bits total width cant be over 48.W
    */
   def withEn(cond:Bool, en:Bool, desc:Printable, user:UInt*)(implicit s: SourceInfo):Unit = apply(Mux(en, cond, true.B), desc, Cat(user.reverse))
+  def withEn(cond:Bool, en:Bool, user:UInt*)(implicit s: SourceInfo):Unit = withEn(cond, en, cf"", Cat(user.reverse))
 
-  def checkTimeout(cnt: UInt, desc:Printable, user:UInt*)(implicit s: SourceInfo):Unit = {
+  /** Checks for timeout condition by counting cycles since last clear signal.
+   * If the counter reaches its maximum value (300_0000 cycles), the circuit
+   * simulation stops with an error. The assert id and user bits will be
+   * output to the module interface.
+   *
+   * @param clear   reset signal that clears the timeout counter when asserted
+   * @param timeout EDA assert max timeout value
+   * @param desc    optional format string to print when timeout occurs
+   * @param user    optional bits to output some message to module interface
+   * @note desc must be defined as Printable (e.g. cf"xxx") to print chisel-type values
+   * @note user bits total width cant be over 48.W
+   * @note Default timeout threshold of 3,000,000 cycles corresponds to 1ms at 3GHz clock frequency
+   */
+  def checkTimeout(clear:Bool, timeout: Int, desc:Printable, user:UInt*)(implicit s: SourceInfo):Unit = {
     // At 3Ghz, 1ms equals 300_0000 cycles.
-    apply(cnt < 3000000.U, desc, Cat(user.reverse))
-    require(cnt.getWidth >= log2Ceil(3000000))
+    val cnt = Counter(0 until 3000000, reset = clear)
+    apply(!cnt._2, desc, Cat(user.reverse))
+    // EDA
+    val cfSourceInfo = s match {
+      case SourceLine(filename, line, col) => cf"$filename:$line:$col: "
+      case _ => cf""
+    }
+    assert(cnt._1 < timeout.U, cfSourceInfo + desc)
   }
+  def checkTimeout(clear:Bool, timeout: Int, user:UInt*)(implicit s: SourceInfo):Unit = checkTimeout(clear, timeout, cf"", Cat(user.reverse))
 
-  def placePipe(level:Int, moduleTop:Boolean = false):HwAsrtNode = {
+
+  def placePipe(level:Int, moduleTop:Boolean = false)(implicit s: SourceInfo):HwAsrtNode = {
     val children = hwaNodesSeq.filter(_.level < level)
     val maxId = children.flatMap(_.desc).map(_._1).max
     val idBits = log2Ceil(maxId + 2)
