@@ -42,13 +42,14 @@ object HardwareAssertion {
       case SourceLine(filename, line, col) => cf"$filename:$line:$col: "
       case _ => cf""
     }
-    assert(cond, cfSourceInfo + desc)
+    val assertCond = Mux(XsDebugGlobal.hwaCond, cond, true.B)
+    assert(assertCond, cfSourceInfo + desc)
     // Hardware
     val hwaQ = Module(new Queue(new HwAsrtBundle(log2Ceil(assertId + 2)), entries = 2))
     val assertion = hwaQ.io.deq
     val _user = Cat(user.reverse)
     require(_user.getWidth <= assertion.bits.user.getWidth, s"The bits width of the args([UInt[${_user.getWidth}.W]]) exceeds the upper limit(UInt[${assertion.bits.user.getWidth}.W])")
-    hwaQ.io.enq.valid      := !cond
+    hwaQ.io.enq.valid      := !assertCond
     hwaQ.io.enq.bits.id    := assertId.U
     hwaQ.io.enq.bits.user  := _user
     val sSourceInfo = s match {
@@ -151,5 +152,38 @@ object HardwareAssertion {
     } else {
       require(false)
     }
+  }
+}
+
+object XsDebugGlobal {
+  var hwaCond = true.B
+}
+
+final class XsDebugWhenContext (
+  cond:        Option[() => Bool],
+  block:       => Any,
+  altConds: List[() => Bool]) {
+
+  XsDebugGlobal.hwaCond = {
+    val alt = altConds.foldRight(true.B) {
+      case (c, acc) => acc & !c()
+    }
+    cond.map(alt && _()).getOrElse(alt)
+  }
+
+  def elsewhen(elseCond: => Bool)(block:    => Any): XsDebugWhenContext = {
+    new XsDebugWhenContext(Some(() => elseCond), block, cond ++: altConds)
+  }
+
+  def otherwise(block: => Any): Unit =
+    new XsDebugWhenContext(None, block, cond ++: altConds)
+
+  block
+  XsDebugGlobal.hwaCond = true.B
+}
+
+object awhen {
+  def apply(cond: Bool)(block: => Any): XsDebugWhenContext = {
+    new XsDebugWhenContext(Some(() => cond), block, Nil)
   }
 }
