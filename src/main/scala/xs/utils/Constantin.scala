@@ -79,7 +79,7 @@ object Constantin extends ConstantinParams {
   // store init value => BigInt
   private val initMap = scala.collection.mutable.Map[String, BigInt]()
   private val objectName = "constantin"
-  private var enable = true
+  private var enable = false
 
   def init(enable: Boolean): Unit = {
     this.enable = enable

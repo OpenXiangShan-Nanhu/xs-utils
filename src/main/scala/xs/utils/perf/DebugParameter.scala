@@ -13,5 +13,10 @@ case class DebugOptions
   UseDRAMSim: Boolean = false,
   EnableTopDown: Boolean = false,
   EnableChiselDB: Boolean = false,
-  EnableLuaScoreBoard: Boolean = false
+  EnableLuaScoreBoard: Boolean = false,
+  ResetGen: Boolean = false,
+  EnableConstantin: Boolean = false,
+  AlwaysBasicDB: Boolean = false,
+  EnableRollingDB: Boolean = false
+
 )
