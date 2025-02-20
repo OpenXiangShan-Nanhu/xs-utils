@@ -16,6 +16,7 @@ class DualPortSramTemplate[T <: Data](
   way: Int = 1,
   shouldReset: Boolean = false,
   holdRead: Boolean = false,
+  bypassWrite: Boolean = false,
   setup:Int = 1, // ask your leader to changed this
   latency: Int = 1, // ask your leader to changed this
   extraHold: Boolean = false,  //ask your leader to changed this
@@ -35,7 +36,7 @@ class DualPortSramTemplate[T <: Data](
     shouldReset = shouldReset,
     extraReset = false,
     holdRead = holdRead,
-    bypassWrite = false,
+    bypassWrite = bypassWrite,
     setup = setup,
     latency = latency,
     extraHold = extraHold,

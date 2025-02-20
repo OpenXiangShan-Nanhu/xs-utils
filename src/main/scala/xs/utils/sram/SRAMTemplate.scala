@@ -219,6 +219,15 @@ class SRAMTemplate[T <: Data](
     resetAddr := resetGen.io.waddr
     resetWen := resetGen.io.wen
   }
+  private val enableBypass = bypassWrite && !singlePort
+  private val concurrentRW = io.w.req.fire && io.r.req.fire && io.w.req.bits.setIdx === io.r.req.bits.setIdx
+  private val doBypass = if(enableBypass) {
+    require(actualWay == 1, "Write cannot be bypassed to read in masked SRAMs")
+    concurrentRW
+  } else {
+    if(!singlePort) assert(!concurrentRW, "SRAM without bypass write encountered concurrent RW")
+    false.B
+  }
 
   private val wen = Mux(resetState, resetWen, io.w.req.fire)
   private val _wmask =
@@ -226,7 +235,7 @@ class SRAMTemplate[T <: Data](
   private val wmask = Mux(resetState, Fill(actualWay, true.B), _wmask)
   private val wdata = Mux(resetState, 0.U, io.w.req.bits.data.asUInt)
   private val waddr = Mux(resetState, resetAddr, io.w.req.bits.setIdx)
-  private val ren = io.r.req.fire
+  private val ren = io.r.req.fire && !doBypass
   private val raddr = io.r.req.bits.setIdx
 
   private val ramWen = if(hasMbist) Mux(mbistBd.ack, mbistBd.we, wen) else wen
@@ -325,40 +334,19 @@ class SRAMTemplate[T <: Data](
     }
   }
 
-  private val concurrentRW = io.w.req.fire && io.r.req.fire && io.w.req.bits.setIdx === io.r.req.bits.setIdx
-  private val doBypass = if(bypassWrite) concurrentRW else false.B
-  private val doBypassReg = RegEnable(doBypass, false.B, io.w.req.fire)
-  private val wmaskReg = RegEnable(wmask, 0.U, io.w.req.fire)
-  private val segment = dataWidth / wmask.getWidth
-  private val bypassMask = Cat(Seq.tabulate(wmask.getWidth)(i => wmaskReg(i / segment).asBool).reverse)
-  private val keepMask = Cat(Seq.tabulate(wmask.getWidth)(i => !wmaskReg(i / segment).asBool).reverse)
   private val rdataReg = Reg(UInt(dataWidth.W))
-  private val bypassData = bypassMask & rdataReg | keepMask & ramRdata
-  if(bypassWrite) {
-    when(io.w.req.fire) {
-      rdataReg := wdata.asUInt
-    }.elsewhen(respReg(0)) {
-      rdataReg := Mux(doBypassReg, bypassData, ramRdata)
-    }
-  } else {
-    when(respReg(0)) {
-      rdataReg := ramRdata
-    }
+  when(doBypass) {
+    rdataReg := wdata.asUInt
+  }.elsewhen(respReg(0)) {
+    rdataReg := ramRdata
   }
 
-  if(!bypassWrite && !holdRead) {
-    io.r.resp.data := ramRdata.asTypeOf(io.r.resp.data)
-  } else if(!bypassWrite && holdRead) {
+  if(holdRead || enableBypass) {
     io.r.resp.data := Mux(respReg(0), ramRdata, rdataReg).asTypeOf(io.r.resp.data)
-  } else if(bypassWrite && !holdRead) {
-    io.r.resp.data := Mux(doBypassReg, bypassData, ramRdata).asTypeOf(io.r.resp.data)
   } else {
-    when(respReg(0)) {
-      io.r.resp.data := Mux(doBypassReg, bypassData, ramRdata).asTypeOf(io.r.resp.data)
-    }.otherwise {
-      io.r.resp.data := rdataReg.asTypeOf(io.r.resp.data)
-    }
+    io.r.resp.data := ramRdata.asTypeOf(io.r.resp.data)
   }
+
   io.r.resp.valid := respReg(0)
   private val selectOHReg = RegEnable(mbistBd.selectedOH, respReg(0))
   mbistBd.rdata := Mux1H(selectOHReg, rdataReg.asTypeOf(Vec(nodeNum, UInt((dataWidth / nodeNum).W))))
