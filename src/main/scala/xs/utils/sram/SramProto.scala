@@ -27,7 +27,7 @@ class GenericSramPowerCtl extends Bundle {
 }
 
 @instantiable
-abstract class SramArray(
+class SramArray(
   depth: Int,
   width: Int,
   maskSegments: Int,
@@ -48,102 +48,27 @@ abstract class SramArray(
     false.B
   }
 
-  @public val RW0 = if(singlePort) {
-    Some(IO(new Bundle() {
-      val clk = Input(Clock())
-      val addr = Input(UInt(log2Ceil(depth).W))
-      val en = Input(Bool())
-      val wmode = Input(Bool())
-      val wmask = if(maskSegments > 1) Input(UInt(maskSegments.W)) else Input(UInt(0.W))
-      val wdata = Input(UInt(width.W))
-      val rdata = Output(UInt(width.W))
-    }))
-  } else {
-    None
-  }
+  @public val RW0 = if(singlePort) Some(IO(new SpRamRwIO(width, maskSegments, depth))) else None
+  @public val R0 = if(!singlePort) Some(IO(new DpRamRIO(width, depth))) else None
+  @public val W0 = if(!singlePort) Some(IO(new DpRamWIO(width, maskSegments, depth))) else None
 
-  @public val R0 = if(!singlePort) {
-    Some(IO(new Bundle() {
-      val clk = Input(Clock())
-      val addr = Input(UInt(log2Ceil(depth).W))
-      val en = Input(Bool())
-      val data = Output(UInt(width.W))
-    }))
-  } else {
-    None
-  }
-
-  @public val W0 = if(!singlePort) {
-    Some(IO(new Bundle() {
-      val clk = Input(Clock())
-      val addr = Input(UInt(log2Ceil(depth).W))
-      val en = Input(Bool())
-      val data = Input(UInt(width.W))
-      val mask = if(maskSegments > 1) Input(UInt(maskSegments.W)) else Input(UInt(0.W))
-    }))
-  } else {
-    None
-  }
+  private val mem = Module(new SramInstGen(singlePort, width, maskSegments, depth))
+  mem.io.RW0.foreach(rw => {
+    rw <> RW0.get
+    rw.en := RW0.get.en & !pwrBlock
+    RW0.get.rdata := Mux(pwrBlock, 0.U, rw.rdata)
+  })
+  mem.io.R0.foreach(r => {
+    r <> R0.get
+    r.en := R0.get.en & !pwrBlock
+    R0.get.data := Mux(pwrBlock, 0.U, r.data)
+  })
+  mem.io.W0.foreach(w => {
+    w <> W0.get
+    w.en := W0.get.en & !pwrBlock
+  })
 
   override def desiredName: String = sramName.getOrElse(super.desiredName)
-}
-
-@instantiable
-class SramArray1P(
-  depth: Int,
-  width: Int,
-  maskSegments: Int,
-  hasMbist: Boolean,
-  sramName: Option[String] = None,
-  powerCtl: Boolean
-) extends SramArray(depth, width, maskSegments, hasMbist, sramName, powerCtl, true) {
-  if(maskSegments > 1) {
-    val dataType = Vec(maskSegments, UInt((width / maskSegments).W))
-    val array = SyncReadMem(depth, dataType)
-    RW0.get.rdata := Mux(pwrBlock, 0.U, array.readWrite(
-        RW0.get.addr,
-        RW0.get.wdata.asTypeOf(dataType),
-        RW0.get.wmask.asBools,
-        RW0.get.en & !pwrBlock,
-        RW0.get.wmode,
-        RW0.get.clk
-      ).asUInt)
-  } else {
-    val array = SyncReadMem(depth, UInt(width.W))
-    RW0.get.rdata := Mux(pwrBlock, 0.U, array.readWrite(
-      RW0.get.addr,
-      RW0.get.wdata,
-      RW0.get.en & !pwrBlock,
-      RW0.get.wmode,
-      RW0.get.clk
-    ))
-  }
-}
-
-@instantiable
-class SramArray2P(
-  depth: Int,
-  width: Int,
-  maskSegments: Int,
-  hasMbist: Boolean,
-  sramName: Option[String] = None,
-  powerCtl: Boolean
-) extends SramArray(depth, width, maskSegments, hasMbist, sramName, powerCtl, false) {
-
-  if(maskSegments > 1) {
-    val dataType = Vec(maskSegments, UInt((width / maskSegments).W))
-    val array = SyncReadMem(depth, dataType, SyncReadMem.WriteFirst)
-    when(W0.get.en & !pwrBlock) {
-      array.write(W0.get.addr, W0.get.data.asTypeOf(dataType), W0.get.mask.asBools, W0.get.clk)
-    }
-    R0.get.data := Mux(pwrBlock, 0.U, array.read(R0.get.addr, R0.get.en & !pwrBlock, R0.get.clk).asUInt)
-  } else {
-    val array = SyncReadMem(depth, UInt(width.W))
-    when(W0.get.en & !pwrBlock) {
-      array.write(W0.get.addr, W0.get.data, W0.get.clk)
-    }
-    R0.get.data := Mux(pwrBlock, 0.U, array.read(R0.get.addr, R0.get.en & !pwrBlock, R0.get.clk))
-  }
 }
 
 object SramProto {
@@ -185,12 +110,12 @@ object SramProto {
       sram.RW0.get.addr := addr
       sram.RW0.get.en := true.B
       sram.RW0.get.wmode := true.B
-      if(sram.RW0.get.wmask.getWidth > 1) sram.RW0.get.wmask := mask else sram.RW0.get.wmask := true.B
+      sram.RW0.get.wmask.foreach(_ := mask)
       sram.RW0.get.wdata := data
     } else {
       sram.W0.get.addr := addr
       sram.W0.get.en := true.B
-      if(sram.W0.get.mask.getWidth > 1) sram.W0.get.mask := mask else sram.W0.get.mask := true.B
+      sram.W0.get.mask.foreach(_ := mask)
       sram.W0.get.data := data
     }
   }
@@ -216,12 +141,14 @@ object SramProto {
     val maskWidth = width / maskSegments
     val sramName = Some(s"sram_array_${numPort}p${depth}x${width}m$maskWidth$mcpStr$pwStr$mbist$suffix")
     if(!defMap.contains(sramName.get)) {
-      val sramDef = if(singlePort) {
-        Definition(new SramArray1P(depth, width, maskSegments, hasMbist, sramName, powerCtl))
-      } else {
-        Definition(new SramArray2P(depth, width, maskSegments, hasMbist, sramName, powerCtl))
-      }
-      defMap(sramName.get) = sramDef
+      defMap(sramName.get) = Definition(new SramArray(
+        depth = depth,
+        width = width,
+        maskSegments = maskSegments,
+        hasMbist = hasMbist,
+        sramName = sramName,
+        powerCtl = powerCtl,
+        singlePort = singlePort))
     }
     val array = Instance(defMap(sramName.get))
     SramProto.init(array, singlePort, clock, writeClock)

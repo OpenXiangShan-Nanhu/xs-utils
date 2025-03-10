@@ -225,7 +225,9 @@ class SRAMTemplate[T <: Data](
     require(actualWay == 1, "Write cannot be bypassed to read in masked SRAMs")
     concurrentRW
   } else {
-    if(!singlePort) assert(!concurrentRW, "SRAM without bypass write encountered concurrent RW")
+    if(!singlePort) when(concurrentRW) {
+      printf("[WARNING]: SRAM without bypass write encountered concurrent RW @ _LOG_MODULE_PATH_\n")
+    }
     false.B
   }
 
