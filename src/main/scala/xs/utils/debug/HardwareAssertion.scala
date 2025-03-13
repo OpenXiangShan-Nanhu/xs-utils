@@ -9,7 +9,7 @@ import chisel3.experimental.{SourceInfo, SourceLine}
 
 class HwAsrtBundle(width:Int) extends Bundle {
   val id    = Output(UInt(width.W))
-  val user  = Output(UInt(48.W))
+  val user  = Output(UInt(128.W))
 }
 
 case class HwAsrtNode (
@@ -34,7 +34,7 @@ object HardwareAssertion {
    * @param desc optional format string to print when the assertion fires
    * @param user optional bits to output some message to module interface
    * @note desc must be defined as Printable(e.g. cf"xxx") to print chisel-type values
-   * @note user bits total width cant be over 48.W
+   * @note user bits total width cant be over 64.W
    */
   def apply(cond:Bool, desc:Printable, user:UInt*)(implicit s: SourceInfo):Unit = {
     // EDA
@@ -45,13 +45,12 @@ object HardwareAssertion {
     val assertCond = Mux(XsDebugGlobal.hwaCond, cond, true.B)
     assert(assertCond, cfSourceInfo + desc)
     // Hardware
-    val hwaQ = Module(new Queue(new HwAsrtBundle(log2Ceil(assertId + 2)), entries = 2))
-    val assertion = hwaQ.io.deq
+    val assertion = Wire(Decoupled(new HwAsrtBundle(log2Ceil(assertId + 2))))
     val _user = Cat(user.reverse)
     require(_user.getWidth <= assertion.bits.user.getWidth, s"The bits width of the args([UInt[${_user.getWidth}.W]]) exceeds the upper limit(UInt[${assertion.bits.user.getWidth}.W])")
-    hwaQ.io.enq.valid      := !assertCond
-    hwaQ.io.enq.bits.id    := assertId.U
-    hwaQ.io.enq.bits.user  := _user
+    assertion.valid      := !assertCond
+    assertion.bits.id    := assertId.U
+    assertion.bits.user  := _user
     val sSourceInfo = s match {
       case SourceLine(filename, line, col) => s"$filename:$line:$col: "
       case _ => s""
