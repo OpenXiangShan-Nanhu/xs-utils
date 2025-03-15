@@ -107,6 +107,7 @@ object HardwareAssertion {
     val hwaQ = Module(new Queue(new HwAsrtBundle(idBits), entries = 2))
     val hwaArb = Module(new ResetRRArbiter(new HwAsrtBundle(idBits), children.size))
     val assertion = hwaQ.io.deq
+    require(hwaArb.io.in.size <= 32, s"HardwareAssertion arbiter input size[${hwaArb.io.in.size}] cannot exceed 32")
     hwaNodesSeq = hwaNodesSeq.filterNot(_.level < level)
     require(children.nonEmpty)
     for(idx <- children.indices) {
