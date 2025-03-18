@@ -20,12 +20,22 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.{Field, Parameters}
 import xs.utils.ChiselDB
+import XSPerfLevel.XSPerfLevel
+
+object XSPerfLevel extends Enumeration {
+  type XSPerfLevel = Value
+
+  val VERBOSE  = Value(0, "VERBOSE")
+  val NORMAL   = Value("NORMAL")
+  val CRITICAL = Value("CRITICAL")
+}
 
 case object PerfCounterOptionsKey extends Field[PerfCounterOptions]
 case class PerfCounterOptions
 (
   enablePerfPrint: Boolean,
   enablePerfDB: Boolean,
+  perfLevel: XSPerfLevel,
   perfDBHartID: Int
 )
 
