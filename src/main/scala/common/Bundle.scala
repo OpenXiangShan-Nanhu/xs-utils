@@ -23,3 +23,17 @@ class CMOReq extends Bundle {
 class CMOResp extends Bundle {
   val address = UInt(64.W)
 }
+
+class TPmetaReq(hartIdLen: Int, fullAddressBits: Int, offsetBits: Int) extends Bundle {
+  // TODO: rawData's width is determined by L2; when L2's offsetBits change, rawData should change accordingly
+  val hartid = UInt(hartIdLen.W)
+  val set = UInt(32.W) // determined by TP
+  val way = UInt(4.W)
+  val wmode = Bool()
+  val rawData = Vec(log2Floor(512 / (fullAddressBits - offsetBits)), UInt((fullAddressBits - offsetBits).W))
+}
+
+class TPmetaResp(hartIdLen: Int, fullAddressBits: Int, offsetBits: Int) extends Bundle {
+  val hartid = UInt(hartIdLen.W)
+  val rawData = Vec(log2Floor(512 / (fullAddressBits - offsetBits)), UInt((fullAddressBits - offsetBits).W))
+}
