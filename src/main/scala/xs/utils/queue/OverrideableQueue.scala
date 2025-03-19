@@ -1,4 +1,4 @@
-package xs.utils
+package xs.utils.queue
 
 import chisel3._
 import chisel3.util._

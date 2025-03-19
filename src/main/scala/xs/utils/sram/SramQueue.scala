@@ -50,9 +50,7 @@ class SramQueue[T <: Data](
   // use in sram
   val singlePort: Boolean = false,
   val hasMbist: Boolean = false
-)(
-  implicit p: Parameters)
-  extends Module() {
+) extends Module {
   require(entries > -1, "Queue must have non-negative number of entries")
   require(entries != 0, "Use companion object Queue.apply for zero entries")
   require(entries > 1, "SRAMQueue has one entrie that is a register, so the size must be greater than 1")

@@ -14,7 +14,7 @@
   * See the Mulan PSL v2 for more details.
   ***************************************************************************************/
 
-package xs.utils
+package xs.utils.queue
 
 import org.chipsalliance.cde.config.Parameters
 import chisel3._
