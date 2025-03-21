@@ -34,10 +34,10 @@ class SRAMBundleA(val set: Int) extends Bundle {
 }
 
 class SRAMBundleAW[T <: Data](
-    private val gen: T,
-    set: Int,
-    val way: Int = 1,
-    val useBitmask: Boolean = false ) 
+  private val gen: T,
+  set: Int,
+  val way: Int = 1,
+  val useBitmask: Boolean = false )
   extends SRAMBundleA(set) {
   private val dataWidth = gen.getWidth
   val data:    Vec[T] = Output(Vec(way, gen))
@@ -106,7 +106,7 @@ class SRAMWriteBus[T <: Data](
   val set:         Int,
   val way:         Int = 1,
   val useBitmask:  Boolean = false)
-    extends Bundle {
+  extends Bundle {
   val req = Decoupled(new SRAMBundleAW(gen, set, way, useBitmask))
 
   def apply(valid: Bool, data: Vec[T], setIdx: UInt, waymask: UInt): SRAMWriteBus[T] = {
@@ -221,23 +221,15 @@ class SRAMTemplate[T <: Data](
   }
   private val enableBypass = bypassWrite && !singlePort
   private val concurrentRW = io.w.req.fire && io.r.req.fire && io.w.req.bits.setIdx === io.r.req.bits.setIdx
-  private val doBypass = if(enableBypass) {
-    require(actualWay == 1, "Write cannot be bypassed to read in masked SRAMs")
-    concurrentRW
-  } else {
-    if(!singlePort) when(concurrentRW) {
-      printf("[WARNING]: SRAM without bypass write encountered concurrent RW @ _LOG_MODULE_PATH_\n")
-    }
-    false.B
-  }
+  private val doBypass = if(enableBypass) Some(concurrentRW) else None
 
   private val wen = Mux(resetState, resetWen, io.w.req.fire)
   private val _wmask =
-  if (useBitmask) io.w.req.bits.flattened_bitmask.getOrElse("b1".U) else io.w.req.bits.waymask.getOrElse("b1".U)
+    if (useBitmask) io.w.req.bits.flattened_bitmask.getOrElse("b1".U) else io.w.req.bits.waymask.getOrElse("b1".U)
   private val wmask = Mux(resetState, Fill(actualWay, true.B), _wmask)
   private val wdata = Mux(resetState, 0.U, io.w.req.bits.data.asUInt)
   private val waddr = Mux(resetState, resetAddr, io.w.req.bits.setIdx)
-  private val ren = io.r.req.fire && !doBypass
+  private val ren = io.r.req.fire
   private val raddr = io.r.req.bits.setIdx
 
   private val ramWen = if(hasMbist) Mux(mbistBd.ack, mbistBd.we, wen) else wen
@@ -337,14 +329,23 @@ class SRAMTemplate[T <: Data](
   }
 
   private val rdataReg = Reg(UInt(dataWidth.W))
-  when(doBypass) {
+  private val wMaskReg = RegEnable(_wmask, wen)
+  private val wBitMaskP = Cat(wMaskReg.asBools.map(m => Fill(elementWidth, m)).reverse)
+  private val wBitMaskN = (~wBitMaskP).asUInt
+  private val doBypassReg = doBypass.map(d => RegEnable(d, ren))
+  private val bypassData = (rdataReg & wBitMaskP) | (ramRdata & wBitMaskN)
+  when(doBypass.getOrElse(false.B)) {
     rdataReg := wdata.asUInt
-  }.elsewhen(respReg(0)) {
-    rdataReg := ramRdata
+  }.elsewhen((respReg(0) && holdRead.B) || (mbistBd.ack && hasMbist.B)) {
+    rdataReg := Mux(doBypassReg.getOrElse(false.B), bypassData, ramRdata)
   }
 
-  if(holdRead || enableBypass) {
+  if(holdRead && !enableBypass) {
     io.r.resp.data := Mux(respReg(0), ramRdata, rdataReg).asTypeOf(io.r.resp.data)
+  } else if(!holdRead && enableBypass) {
+    io.r.resp.data := bypassData.asTypeOf(io.r.resp.data)
+  } else if(holdRead && enableBypass) {
+    io.r.resp.data := Mux(respReg(0), bypassData, rdataReg).asTypeOf(io.r.resp.data)
   } else {
     io.r.resp.data := ramRdata.asTypeOf(io.r.resp.data)
   }
