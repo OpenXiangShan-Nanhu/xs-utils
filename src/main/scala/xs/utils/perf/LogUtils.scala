@@ -20,6 +20,17 @@ import chisel3._
 import org.chipsalliance.cde.config.{Field, Parameters}
 import XSLogLevel.XSLogLevel
 
+object XSLogLevel extends Enumeration {
+  type XSLogLevel = Value
+  val ALL   = Value(0, "ALL  ")
+  val DEBUG = Value("DEBUG")
+  val INFO  = Value("INFO ")
+  val PERF  = Value("PERF ")
+  val WARN  = Value("WARN ")
+  val ERROR = Value("ERROR")
+  val OFF   = Value("OFF  ")
+}
+
 case object LogUtilsOptionsKey extends Field[LogUtilsOptions]
 case class LogUtilsOptions
 (

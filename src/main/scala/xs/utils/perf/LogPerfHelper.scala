@@ -13,7 +13,7 @@ class LogPerfIO extends Bundle {
 class LogPerfHelper extends BlackBox with HasBlackBoxInline {
   val io = IO(Output(new LogPerfIO))
 
-  val verilog =
+  val sverilog =
     """`ifndef SIM_TOP_MODULE_NAME
       |  `define SIM_TOP_MODULE_NAME SimTop
       |`endif
@@ -35,5 +35,5 @@ class LogPerfHelper extends BlackBox with HasBlackBoxInline {
       |endmodule
       |
       |""".stripMargin
-  setInline("LogPerfHelper.v", verilog)
+  setInline("LogPerfHelper.sv", sverilog)
 }

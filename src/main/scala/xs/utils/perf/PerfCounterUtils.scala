@@ -53,23 +53,28 @@ trait HasRegularPerfName {
 }
 
 object XSPerfAccumulate extends HasRegularPerfName {
-  def apply(perfName: String, perfCnt: UInt)(implicit p: Parameters): Unit = {
+  private def create(perfName: String, perfCnt: UInt, ctrl:LogPerfIO)(implicit p: Parameters): Unit = {
     judgeName(perfName)
     if (p(PerfCounterOptionsKey).enablePerfPrint) {
-      val helper = Module(new LogPerfHelper)
-      val perfClean = helper.io.clean
-      val perfDump = helper.io.dump
-
       val counter = RegInit(0.U(64.W)).suggestName(perfName + "Counter")
       val next_counter = WireInit(0.U(64.W)).suggestName(perfName + "Next")
       next_counter := counter + perfCnt
-      counter := Mux(perfClean, 0.U, next_counter)
+      counter := Mux(ctrl.clean, 0.U, next_counter)
 
-      when (perfDump) {
-        XSPerfPrint(p"$perfName, $next_counter\n")(helper.io)
+      when (ctrl.dump) {
+        XSPerfPrint(p"$perfName, $next_counter\n")(ctrl)
       }
     }
   }
+
+  def apply(events: Seq[(String, UInt)])(implicit p: Parameters):Unit = {
+    if (p(PerfCounterOptionsKey).enablePerfPrint) {
+      val helper = Module(new LogPerfHelper)
+      for((name, cnt) <- events) create(name, cnt, helper.io)
+    }
+  }
+
+  def apply(perfName: String, perfCnt: UInt)(implicit p: Parameters):Unit = apply(Seq((perfName, perfCnt)))(p)
 }
 
 object XSPerfHistogram extends HasRegularPerfName {
@@ -161,33 +166,38 @@ object XSPerfHistogram extends HasRegularPerfName {
 }
 
 object XSPerfMax extends HasRegularPerfName {
-  def apply(perfName: String, perfCnt: UInt, enable: Bool)(implicit p: Parameters): Unit = {
+  private def create(perfName: String, perfCnt: UInt, enable: Bool, ctrl:LogPerfIO)(implicit p: Parameters): Unit = {
     judgeName(perfName)
     if (p(PerfCounterOptionsKey).enablePerfPrint) {
-      val helper = Module(new LogPerfHelper)
-      val perfClean = helper.io.clean
-      val perfDump = helper.io.dump
-
       val max = RegInit(0.U(64.W))
       val next_max = Mux(enable && (perfCnt > max), perfCnt, max)
-      max := Mux(perfClean, 0.U, next_max)
+      max := Mux(ctrl.clean, 0.U, next_max)
 
-      when (perfDump) {
-        XSPerfPrint(p"${perfName}_max, $next_max\n")(helper.io)
+      when (ctrl.dump) {
+        XSPerfPrint(p"${perfName}_max, $next_max\n")(ctrl)
       }
     }
   }
+  def apply(events: Seq[(String, UInt, Bool)])(implicit p: Parameters):Unit = {
+    if (p(PerfCounterOptionsKey).enablePerfPrint) {
+      val helper = Module(new LogPerfHelper)
+      for((name, cnt, en) <- events) create(name, cnt, en, helper.io)
+    }
+  }
+  def apply(perfName: String, perfCnt: UInt, enable: Bool)(implicit p: Parameters):Unit = apply(Seq((perfName, perfCnt, enable)))(p)
 }
 
 object QueuePerf {
   def apply(size: Int, utilization: UInt, full: UInt)(implicit p: Parameters): Unit = {
-    XSPerfAccumulate("utilization", utilization)
     XSPerfHistogram("util", utilization, true.B, 0, size, 1)
-    XSPerfAccumulate("full", full)
     val exHalf = utilization > (size/2).U
     val empty = utilization === 0.U
-    XSPerfAccumulate("exHalf", exHalf)
-    XSPerfAccumulate("empty", empty)
+    XSPerfAccumulate(Seq(
+      ("utilization", utilization),
+      ("full", full),
+      ("exHalf", exHalf),
+      ("empty", empty)
+    ))
   }
 }
 
