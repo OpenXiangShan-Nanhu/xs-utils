@@ -12,7 +12,7 @@ class FastQueue[T <: Data](gen:T, size:Int, deqDataNoX:Boolean) extends Module w
   require(size > 1)
   private val valids = RegInit(VecInit(Seq.fill(size)(false.B)))
   private val array = Reg(Vec(size, gen))
-  private val enqRdyReg = RegInit(false.B)
+  private val enqRdyReg = RegInit(true.B)
 
   private val enqFire = io.enq.fire
   private val deqFire = io.deq.fire
