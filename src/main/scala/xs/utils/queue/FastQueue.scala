@@ -41,7 +41,7 @@ class FastQueue[T <: Data](gen:T, size:Int, deqDataNoX:Boolean) extends Module w
   io.deq.valid := valids.head
   io.deq.bits := array.head
   io.enq.ready := enqRdyReg
-  if(deqDataNoX) io.deq.bits := Mux(io.deq.valid, io.deq.bits, 0.U.asTypeOf(gen))
+  if(deqDataNoX) io.deq.bits := Mux(io.deq.valid, array.head, 0.U.asTypeOf(gen))
 
   io.count := PopCount(valids)
   when(io.count.orR) {
