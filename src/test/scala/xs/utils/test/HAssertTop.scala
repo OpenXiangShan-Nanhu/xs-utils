@@ -4,11 +4,11 @@ import chisel3._
 import chisel3.experimental.SourceInfo
 import chisel3.stage.ChiselGeneratorAnnotation
 import chisel3.util.Decoupled
-import circt.stage.{ChiselStage, FirtoolOption}
 import firrtl.AnnotationSeq
 import org.chipsalliance.cde.config.{Config, Parameters}
 import xs.utils.FileRegisters
-import xs.utils.debug.{HAssert, HardwareAssertionKey, HwaParams, awhen}
+import xs.utils.debug.{HAssert, HardwareAssertionKey, HwaParams}
+import xs.utils.stage.XsStage
 
 object ModAHelper {
   def xor(in0:Bool, in1:Bool)(implicit p: Parameters, s: SourceInfo):Unit = {
@@ -28,7 +28,7 @@ class ModA(implicit p:Parameters) extends Module {
   HAssert(io.b, cf"assert B ${io.a}%x")
   ModAHelper.xor(io.a, io.b)
   ModAHelper.xor(io.c, io.d)
-  awhen(io.a) {
+  when(io.a) {
     ModAHelper.xor(io.b, io.c)
   }.otherwise {
     ModAHelper.xor(io.b, io.d)
@@ -37,7 +37,7 @@ class ModA(implicit p:Parameters) extends Module {
 }
 
 class HAssertTest extends Module {
-  private val size = 32
+  private val size = 2
   implicit val config:Parameters = new Config((_, _, _) => {
     case HardwareAssertionKey => HwaParams(enable = true)
   })
@@ -50,10 +50,8 @@ class HAssertTest extends Module {
     val hwa = Option.when(config(HardwareAssertionKey).enable)(Decoupled(UInt(config(HardwareAssertionKey).maxInfoBits.W)))
   })
 
-  private val modSeq0 = Seq.fill(size / 2)(Module(new ModA()))
-  HAssert.placePipe(1)
-  private val modSeq1 = Seq.fill(size / 2)(Module(new ModA()))
-  HAssert.placePipe(1)
+  private val modSeq0 = Seq.fill(size / 2)(Module(new ModA))
+  private val modSeq1 = Seq.fill(size / 2)(Module(new ModA))
   private val modSeq = (modSeq0 ++ modSeq1)
   for(i <- modSeq.indices) {
     modSeq(i).io.a := io.a(i)
@@ -62,7 +60,7 @@ class HAssertTest extends Module {
     modSeq(i).io.d := io.d(i)
     io.z(i) := modSeq(i).io.z
   }
-
+  HAssert.placePipe(1)
   private val top = HAssert.placePipe(2, moduleTop = true).map(_.head)
   HAssert.release(top, "hwa", "test")
 
@@ -71,6 +69,6 @@ class HAssertTest extends Module {
 
 object HAssertTestTop extends App {
   val (config, firrtlOpts) = Parser(args)
-  (new ChiselStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new HAssertTest))
+  (new XsStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new HAssertTest))
   FileRegisters.write("build", "HAssertTest")
 }

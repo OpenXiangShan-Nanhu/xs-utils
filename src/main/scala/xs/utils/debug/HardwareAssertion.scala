@@ -1,12 +1,13 @@
 package xs.utils.debug
 
 import chisel3._
-import chisel3.experimental.hierarchy.core.IsLookupable
 import chisel3.util._
 import chisel3.util.experimental.BoringUtils
 import xs.utils.{FileRegisters, ResetRRArbiter}
 import chisel3.experimental.{SourceInfo, SourceLine}
 import org.chipsalliance.cde.config.{Field, Parameters}
+
+import scala.collection.mutable
 
 case object HardwareAssertionKey extends Field[HwaParams]
 
@@ -42,6 +43,8 @@ object HAssert {
 object HardwareAssertion {
   private var gid = 0
   private var nodeSeq = Seq[HAssertNode]()
+
+  private val hashToCountMap = mutable.Map[String, Int]()
 
   private def extractStr(pt:Printable): String = {
     pt match {
@@ -83,13 +86,21 @@ object HardwareAssertion {
         cf"$fn:$line:$col: " + desc
       case _ => desc
     }
-    val assertCond = Mux(XsDebugGlobal.hwaCond, cond, true.B)
+    val assertCond = cond
     assert(assertCond, descStr)
     val hwaP = p(HardwareAssertionKey)
     if(hwaP.enable) {
-      val thisCond = Wire(new HAssertBundle(None))
-      thisCond.cond.get := assertCond
-      val node = HAssertNode(thisCond, Seq((0, extractStr(descStr))), 0)
+      val pdesc = extractStr(descStr)
+      val hashCode = s"${pdesc.hashCode}"
+      if(!hashToCountMap.contains(hashCode)) {
+        hashToCountMap.addOne((hashCode, 0))
+      }
+      hashToCountMap(hashCode) = hashToCountMap(hashCode) + 1
+      val pcode = s"${hashCode}_${hashToCountMap(hashCode) - 1}"
+      val thisCond = IO(new HAssertBundle(None))
+      thisCond.cond.get := RegNext(!assertCond, false.B)
+      thisCond.suggestName(s"hwa_$pcode")
+      val node = HAssertNode(thisCond, Seq((0, pdesc)), 0)
       nodeSeq = nodeSeq :+ node
     }
   }
@@ -138,19 +149,25 @@ object HardwareAssertion {
       val childrenSegSeq = children.grouped(segLen).toSeq
       require(nrPipe == childrenSegSeq.size)
       val res = for(cs <- childrenSegSeq) yield {
-        val arb = Module(new ResetRRArbiter(gen = UInt(width.W), n = cs.size))
-        val q = Module(new Queue(gen = UInt(width.W), entries = 2))
-        val pipe = Wire(new HAssertBundle(Some(width)))
-        dontTouch(arb.io)
-        arb.io.in.zip(cs).foreach({case(a, b) => a <> BoringUtils.bore(b.hassert).bus.get})
-        q.io.enq <> arb.io.out
-        pipe.bus.get <> q.io.deq
-        HAssertNode(pipe, cs.flatMap(_.desc), level)
+        val hwa_arb = Module(new ResetRRArbiter(gen = UInt(width.W), n = cs.size))
+        val hwa_q = Module(new Queue(gen = UInt(width.W), entries = 2))
+        val hwa_out = Wire(new HAssertBundle(Some(width)))
+        dontTouch(hwa_arb.io)
+        hwa_arb.io.in.zip(cs).foreach({ case(a, b) =>
+          val hwa = BoringUtils.bore(b.hassert).bus.get
+          a.valid := hwa.valid
+          hwa.ready := a.ready
+          a.bits := hwa.bits
+        })
+        hwa_q.io.enq <> hwa_arb.io.out
+        hwa_out.bus.get <> hwa_q.io.deq
+        HAssertNode(hwa_out, cs.flatMap(_.desc), level)
       }
       if(!moduleTop) {
         nodeSeq = nodeSeq.filterNot(_.level < level) ++ res
       } else {
         gid = 0
+        hashToCountMap.clear()
       }
       Some(res)
     } else {
@@ -167,38 +184,5 @@ object HardwareAssertion {
         .reduce((a, b) => a + '\n' + b)
       FileRegisters.add(dir, s"${pfx}_hardware_assertion.txt", str, dontCarePrefix = true)
     })
-  }
-}
-
-object XsDebugGlobal {
-  var hwaCond = true.B
-}
-
-final class XsDebugWhenContext(
-  cond: Option[() => Bool],
-  block: => Any,
-  altConds: List[() => Bool]) {
-
-  XsDebugGlobal.hwaCond = {
-    val alt = altConds.foldRight(true.B) {
-      case (c, acc) => acc & !c()
-    }
-    cond.map(alt && _()).getOrElse(alt)
-  }
-
-  def elsewhen(elseCond: => Bool)(block: => Any): XsDebugWhenContext = {
-    new XsDebugWhenContext(Some(() => elseCond), block, cond ++: altConds)
-  }
-
-  def otherwise(block: => Any): Unit =
-    new XsDebugWhenContext(None, block, cond ++: altConds)
-
-  block
-  XsDebugGlobal.hwaCond = true.B
-}
-
-object awhen {
-  def apply(cond: Bool)(block: => Any): XsDebugWhenContext = {
-    new XsDebugWhenContext(Some(() => cond), block, Nil)
   }
 }
