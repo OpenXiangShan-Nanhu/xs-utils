@@ -2,7 +2,7 @@ MOD ?= dft.OCC
 
 init:
 	git submodule update --init
-	cd rocket-chip && git submodule update --init cde hardfloat
+	cd rocket-chip/dependencies && git submodule update --init cde hardfloat diplomacy
 
 idea:
 	mill -i mill.idea.GenIdea/idea
