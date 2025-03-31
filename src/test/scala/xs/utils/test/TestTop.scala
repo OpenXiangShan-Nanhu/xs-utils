@@ -1,22 +1,19 @@
-import chisel3._
-import circt.stage.{ChiselStage, FirtoolOption}
-import xs.utils._
-import chisel3.stage.ChiselGeneratorAnnotation
+package xs.utils.test
+
+import circt.stage.FirtoolOption
 import org.chipsalliance.cde.config.{Config, Field, Parameters}
 
 import scala.annotation.tailrec
-import scala.reflect.runtime.universe._
 
 case object OptKey extends Field[Opt]
 
-case class Opt(module: String = "", build: String = "build")
+case class Opt(build: String = "build")
 
 class DefaultConfig extends Config((site, here, up) => {
   case OptKey => Opt()
 })
 
 object Parser {
-
 
   def apply(args: Array[String]): (Parameters, Array[String]) = {
     val defaultConfig = new DefaultConfig
@@ -28,20 +25,6 @@ object Parser {
     def parse(config: Parameters, args: List[String]): Parameters = {
       args match {
         case Nil => config
-
-        case "--help" :: tail =>
-          println(
-            """
-              |Customized Options
-              |  --module <full class name>
-          """.stripMargin)
-          hasHelp = true
-          parse(config, tail)
-
-        case "--module" :: confStr :: tail =>
-          parse(config.alter((site, here, up) => {
-            case OptKey => up(OptKey).copy(module = confStr)
-          }), tail)
 
         case "-td" :: bdStr :: tail =>
           hasTd = true
@@ -65,11 +48,8 @@ object Parser {
   }
 }
 
-object TestTop extends App {
-  val (config, firrtlOpts) = Parser(args)
-  val module = if (config(OptKey).module == "") "dft.OCC" else config(OptKey).module
-  lazy val m = Class.forName("xs.utils." + module).getDeclaredConstructor().newInstance().asInstanceOf[RawModule]
-  (new ChiselStage).execute(firrtlOpts, Seq(
+object TestTopHelper {
+  val firtoolOpts = Seq(
     FirtoolOption("-O=release"),
     FirtoolOption("--disable-all-randomization"),
     FirtoolOption("--disable-annotation-unknown"),
@@ -79,8 +59,6 @@ object TestTop extends App {
     FirtoolOption("--lowering-options=noAlwaysComb," +
       " disallowPortDeclSharing, disallowLocalVariables," +
       " emittedLineLength=120, explicitBitcast, locationInfoStyle=plain," +
-      " disallowExpressionInliningInPorts, disallowMuxInlining"),
-    ChiselGeneratorAnnotation(() => m)
-  ))
-  FileRegisters.write(config(OptKey).build, module)
+      " disallowExpressionInliningInPorts, disallowMuxInlining")
+  )
 }

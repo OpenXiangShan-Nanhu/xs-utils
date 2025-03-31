@@ -17,21 +17,55 @@ case class HwaParams(
   hwaDevDepth: Int = 2048
 )
 
-class HwAsrtBundle(width: Int) extends Bundle {
-  val id = Output(UInt(width.W))
+class HAssertBundle(width: Option[Int]) extends Bundle {
+  val cond = Option.when(width.isEmpty)(Output(Bool()))
+  val bus = width.map(w => Decoupled(UInt(w.W)))
 }
 
-case class HwAsrtNode(
-  assertion: DecoupledIO[HwAsrtBundle],
+case class HAssertNode(
+  hassert: HAssertBundle,
   desc: Seq[(Int, String)],
   level: Int
 )
 
-case class DomainInfo(desc: Seq[(Int, String)]) extends IsLookupable
+object HAssert {
+  def apply(cond:Bool, desc:Printable)(implicit p: Parameters, s: SourceInfo):Unit = HardwareAssertion(cond, desc)(p, s)
+  def apply(cond:Bool)(implicit p: Parameters, s: SourceInfo):Unit = HardwareAssertion(cond)(p, s)
+  def withEn(cond: Bool, en: Bool, desc: Printable)(implicit p: Parameters, s: SourceInfo): Unit = HardwareAssertion.withEn(cond, en, desc)(p ,s)
+  def withEn(cond: Bool, en: Bool)(implicit p: Parameters, s: SourceInfo): Unit = HardwareAssertion.withEn(cond, en)(p ,s)
+  def checkTimeout(clear: Bool, timeout: Int, desc: Printable)(implicit p: Parameters, s: SourceInfo): Unit = HardwareAssertion.checkTimeout(clear, timeout, desc)(p, s)
+  def checkTimeout(clear: Bool, timeout: Int)(implicit p: Parameters, s: SourceInfo): Unit = HardwareAssertion.checkTimeout(clear, timeout)(p, s)
+  def placePipe(level: Int, moduleTop: Boolean = false)(implicit p: Parameters): Option[Seq[HAssertNode]] = HardwareAssertion.placePipe(level, moduleTop)
+  def release(node: Option[HAssertNode], dir: String, pfx: String = "")(implicit p: Parameters): Unit = HardwareAssertion.release(node, dir, pfx)
+}
 
 object HardwareAssertion {
-  private var assertId = 0
-  private var hwaNodesSeq = Seq[HwAsrtNode]()
+  private var gid = 0
+  private var nodeSeq = Seq[HAssertNode]()
+
+  private def extractStr(pt:Printable): String = {
+    pt match {
+      case Printables(pts) => pts.map(extractStr).reduce(_ + _)
+      case PString(str) => str
+      case _ => ""
+    }
+  }
+
+  private def squashPoints(pts: Seq[HAssertNode])(implicit p: Parameters): Seq[HAssertNode] = {
+    val hwaP = p(HardwareAssertionKey)
+    pts.groupBy(_.desc.head._2).map({case(desc, ns) =>
+      val asrtCnt = RegInit(hwaP.maxAssertRepeatNum.U(log2Ceil(hwaP.maxAssertRepeatNum + 1).W))
+      val squashCond = Wire(new HAssertBundle(Some(hwaP.maxInfoBits)))
+      squashCond.bus.get.valid := Cat(ns.map(n => BoringUtils.bore(n.hassert.cond.get))).orR && asrtCnt.orR
+      squashCond.bus.get.bits := gid.U
+      when(squashCond.bus.get.fire) {
+        asrtCnt := asrtCnt - 1.U
+      }
+      val res = HAssertNode(squashCond, Seq((gid, desc)), 0)
+      gid = gid + 1
+      res
+    }).toSeq
+  }
 
   /** Checks for a condition to be valid in the circuit at rising clock edge
    * when not in reset. If the condition evaluates to false, the circuit
@@ -42,33 +76,24 @@ object HardwareAssertion {
    * @param desc optional format string to print when the assertion fires
    * @note desc must be defined as Printable(e.g. cf"xxx") to print chisel-type values
    */
-  def apply(cond: Bool, desc: Printable)(implicit p: Parameters, s: SourceInfo): Unit = {
-    // EDA
-    val cfSourceInfo = s match {
-      case SourceLine(filename, line, col) => cf"$filename:$line:$col: "
-      case _ => cf""
+  def apply(cond:Bool, desc:Printable)(implicit p: Parameters, s: SourceInfo): Unit = {
+    val descStr = s match {
+      case SourceLine(filename, line, col) =>
+        val fn = filename.replaceAll("\\\\", "/")
+        cf"$fn:$line:$col: " + desc
+      case _ => desc
     }
     val assertCond = Mux(XsDebugGlobal.hwaCond, cond, true.B)
-    assert(assertCond, cfSourceInfo + desc)
-    // Hardware
+    assert(assertCond, descStr)
     val hwaP = p(HardwareAssertionKey)
     if(hwaP.enable) {
-      val assertCnt = RegInit(hwaP.maxAssertRepeatNum.U)
-      val assertion = Wire(Decoupled(new HwAsrtBundle(log2Ceil(assertId + 2))))
-      assertion.valid := !assertCond & assertCnt.orR
-      assertion.bits.id := assertId.U
-      assertCnt := Mux(assertion.fire, assertCnt - 1.U, assertCnt)
-      require(assertion.bits.getWidth <= hwaP.maxInfoBits, s"$assertId hardware assertions are too many!")
-      val sSourceInfo = s match {
-        case SourceLine(filename, line, col) => s"$filename:$line:$col: "
-        case _ => s""
-      }
-      val node = HwAsrtNode(assertion, Seq((assertId, sSourceInfo + desc)), 0)
-      hwaNodesSeq = hwaNodesSeq :+ node
-      assertId = assertId + 1
+      val thisCond = Wire(new HAssertBundle(None))
+      thisCond.cond.get := assertCond
+      val node = HAssertNode(thisCond, Seq((0, extractStr(descStr))), 0)
+      nodeSeq = nodeSeq :+ node
     }
   }
-  def apply(cond: Bool)(implicit p: Parameters, s: SourceInfo): Unit = apply(cond, cf"")
+  def apply(cond: Bool)(implicit p: Parameters, s: SourceInfo): Unit = apply(cond, "")(p, s)
 
   /** Apply an assertion in the hardware design with an enable signal.
    *
@@ -77,8 +102,8 @@ object HardwareAssertion {
    * @param desc optional format string to print when the assertion fires
    * @note desc must be defined as Printable(e.g. cf"xxx") to print chisel-type values
    */
-  def withEn(cond: Bool, en: Bool, desc: Printable)(implicit p: Parameters, s: SourceInfo): Unit = apply(Mux(en, cond, true.B), desc)
-  def withEn(cond: Bool, en: Bool)(implicit p: Parameters, s: SourceInfo): Unit = withEn(cond, en, cf"")
+  def withEn(cond: Bool, en: Bool, desc: Printable)(implicit p: Parameters, s: SourceInfo): Unit = apply(Mux(en, cond, true.B), desc)(p ,s)
+  def withEn(cond: Bool, en: Bool)(implicit p: Parameters, s: SourceInfo): Unit = withEn(cond, en, "")(p ,s)
 
   /** Checks for timeout condition by counting cycles since last clear signal.
    * If the counter reaches its maximum value (300_0000 cycles), the circuit
@@ -95,76 +120,53 @@ object HardwareAssertion {
     // At 3Ghz, 1ms equals 300_0000 cycles.
     val cnt = Counter(0 until 3000000, reset = clear)
     apply(!cnt._2, desc)(p, s)
-    // EDA
-    val cfSourceInfo = s match {
-      case SourceLine(filename, line, col) => cf"$filename:$line:$col: "
-      case _ => cf""
-    }
-    assert(cnt._1 < timeout.U, cfSourceInfo + desc)
+    assert(cnt._1 < timeout.U, desc)(s)
   }
 
   def checkTimeout(clear: Bool, timeout: Int)(implicit p: Parameters, s: SourceInfo): Unit = {
     checkTimeout(clear, timeout, cf"")(p, s)
   }
 
-  def placePipe(level: Int, moduleTop: Boolean = false)(implicit p: Parameters): HwAsrtNode = {
-    if(p(HardwareAssertionKey).enable && hwaNodesSeq.count(_.level < level) != 0) {
-      val children = hwaNodesSeq.filter(_.level < level)
-      val maxId = children.flatMap(_.desc).map(_._1).max
-      val idBits = log2Ceil(maxId + 2)
-      val hwaQ = Module(new Queue(new HwAsrtBundle(idBits), entries = 2))
-      val hwaArb = Module(new ResetRRArbiter(new HwAsrtBundle(idBits), children.size))
-      val assertion = hwaQ.io.deq
-      require(assertion.bits.getWidth <= p(HardwareAssertionKey).maxInfoBits, s"$maxId hardware assertions are too many!")
-      require(hwaArb.io.in.size <= 32, s"HardwareAssertion arbiter input size[${hwaArb.io.in.size}] cannot exceed 32")
-      hwaNodesSeq = hwaNodesSeq.filterNot(_.level < level)
-      require(children.nonEmpty)
-      for(idx <- children.indices) {
-        hwaArb.io.in(idx) <> BoringUtils.bore(children(idx).assertion)
+  def placePipe(level: Int, moduleTop: Boolean = false)(implicit p: Parameters): Option[Seq[HAssertNode]] = {
+    if(p(HardwareAssertionKey).enable && nodeSeq.count(_.level < level) != 0) {
+      val candidates = nodeSeq.filter(_.level < level)
+      val children = candidates.filter(_.level > 0) ++ squashPoints(candidates.filter(_.level == 0))
+      val width = p(HardwareAssertionKey).maxInfoBits
+      require(gid < (1L << width))
+      val nrPipe = if(moduleTop) 1 else (children.size + 15) / 16
+      val segLen = (children.size + nrPipe - 1) / nrPipe
+      val childrenSegSeq = children.grouped(segLen).toSeq
+      require(nrPipe == childrenSegSeq.size)
+      val res = for(cs <- childrenSegSeq) yield {
+        val arb = Module(new ResetRRArbiter(gen = UInt(width.W), n = cs.size))
+        val q = Module(new Queue(gen = UInt(width.W), entries = 2))
+        val pipe = Wire(new HAssertBundle(Some(width)))
+        dontTouch(arb.io)
+        arb.io.in.zip(cs).foreach({case(a, b) => a <> BoringUtils.bore(b.hassert).bus.get})
+        q.io.enq <> arb.io.out
+        pipe.bus.get <> q.io.deq
+        HAssertNode(pipe, cs.flatMap(_.desc), level)
       }
-      val desc = children.flatMap(_.desc)
-      hwaQ.io.enq <> hwaArb.io.out
-      val node = HwAsrtNode(assertion, desc, level)
       if(!moduleTop) {
-        hwaNodesSeq = hwaNodesSeq :+ node
+        nodeSeq = nodeSeq.filterNot(_.level < level) ++ res
       } else {
-        assertId = 0
+        gid = 0
       }
-      node
+      Some(res)
     } else {
-      val assertion = WireInit(0.U.asTypeOf(Decoupled(new HwAsrtBundle(1))))
-      HwAsrtNode(assertion, Seq((0, "")), 0)
+      None
     }
   }
 
-  def fromDomain(aio: DecoupledIO[HwAsrtBundle], dinfo: DomainInfo, level: Int, domainName: String)(implicit p: Parameters): HwAsrtNode = {
-    if(p(HardwareAssertionKey).enable) {
-      val maxId = dinfo.desc.map(_._1).max + assertId
-      val hwaQ = Module(new Queue(new HwAsrtBundle(log2Ceil(maxId + 2)), entries = 2))
-      hwaQ.io.enq.valid := aio.valid
-      hwaQ.io.enq.bits.id := aio.bits.id + assertId.U
-      aio.ready := hwaQ.io.enq.ready
-      require(hwaQ.io.enq.bits.getWidth <= p(HardwareAssertionKey).maxInfoBits, s"$maxId hardware assertions are too many!")
-      val newDesc = dinfo.desc.map(d => (d._1 + assertId, domainName + " " + d._2))
-      val node = HwAsrtNode(assertion = hwaQ.io.deq, desc = newDesc, level = level)
-      hwaNodesSeq = hwaNodesSeq :+ node
-      assertId = newDesc.map(_._1).max + 1
-      node
-    } else {
-      val assertion = WireInit(0.U.asTypeOf(Decoupled(new HwAsrtBundle(1))))
-      HwAsrtNode(assertion, Seq((0, "")), 0)
-    }
-  }
-
-  def release(n: HwAsrtNode, dir: String, pfx: String = "")(implicit p: Parameters): Unit = {
-    if(p(HardwareAssertionKey).enable) {
-      hwaNodesSeq = Seq()
-      assertId = 0
+  def release(node: Option[HAssertNode], dir: String, pfx: String = "")(implicit p: Parameters): Unit = {
+    node.foreach(n => {
+      nodeSeq = Nil
+      gid = 0
       val str = n.desc
         .map(d => s"assertion ${d._1}: ${d._2}")
         .reduce((a, b) => a + '\n' + b)
       FileRegisters.add(dir, s"${pfx}_hardware_assertion.txt", str, dontCarePrefix = true)
-    }
+    })
   }
 }
 
