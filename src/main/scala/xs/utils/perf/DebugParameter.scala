@@ -17,6 +17,6 @@ case class DebugOptions
   ResetGen: Boolean = false,
   EnableConstantin: Boolean = false,
   AlwaysBasicDB: Boolean = false,
-  EnableRollingDB: Boolean = false
-
+  EnableRollingDB: Boolean = false,
+  EnableHWMoniter: Boolean = false
 )
