@@ -87,7 +87,7 @@ object HardwareAssertion {
       case _ => desc
     }
     val assertCond = cond
-    assert(assertCond, descStr)
+    assert(assertCond, descStr)(s)
     val hwaP = p(HardwareAssertionKey)
     if(hwaP.enable) {
       val pdesc = extractStr(descStr)

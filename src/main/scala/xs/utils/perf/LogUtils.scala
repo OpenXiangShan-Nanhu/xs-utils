@@ -19,6 +19,7 @@ package xs.utils.perf
 import chisel3._
 import org.chipsalliance.cde.config.{Field, Parameters}
 import XSLogLevel.XSLogLevel
+import chisel3.experimental.{SourceInfo, SourceLine}
 
 object XSLogLevel extends Enumeration {
   type XSLogLevel = Value
@@ -43,43 +44,49 @@ case class LogUtilsOptions
 object XSLog {
   val MagicStr = "__PERCENTAGE_M__"
   def apply(debugLevel: XSLogLevel, ctrlInfoOpt: Option[LogPerfIO] = None)
-           (prefix: Boolean, cond: Bool, pable: Printable)(implicit p: Parameters): Unit =
+           (prefix: Boolean, cond: Bool, pable: Printable)(implicit p: Parameters, s: SourceInfo): Unit =
   {
-    val logOpts = p(LogUtilsOptionsKey)
-    val enableDebug = logOpts.enableDebug && debugLevel != XSLogLevel.PERF
-    val enablePerf = logOpts.enablePerf && debugLevel == XSLogLevel.PERF
-    if (!logOpts.fpgaPlatform && (enableDebug || enablePerf || debugLevel == XSLogLevel.ERROR)) {
-      val ctrlInfo = ctrlInfoOpt.getOrElse(Module(new LogPerfHelper).io)
-      val logEnable = ctrlInfo.logEnable
-      val logTimestamp = ctrlInfo.timer
-      val check_cond = (if (debugLevel == XSLogLevel.ERROR) true.B else logEnable) && cond
-      when (check_cond) {
-        val commonInfo = p"[$debugLevel][time=$logTimestamp] $MagicStr: "
-        printf((if (prefix) commonInfo else p"") + pable)
-        if (debugLevel >= XSLogLevel.ERROR) {
-          assert(false.B)
+    if (debugLevel >= XSLogLevel.ERROR) {
+      val descStr = s match {
+        case SourceLine(filename, line, col) =>
+          val fn = filename.replaceAll("\\\\", "/")
+          cf"$fn:$line:$col: " + pable
+        case _ => pable
+      }
+      assert(!cond, descStr)(s)
+    } else {
+      val logOpts = p(LogUtilsOptionsKey)
+      val enableDebug = logOpts.enableDebug && debugLevel != XSLogLevel.PERF
+      val enablePerf = logOpts.enablePerf && debugLevel == XSLogLevel.PERF
+      if(!logOpts.fpgaPlatform && (enableDebug || enablePerf)) {
+        val ctrlInfo = ctrlInfoOpt.getOrElse(Module(new LogPerfHelper).io)
+        when(ctrlInfo.logEnable && cond) {
+          val commonInfo = p"[$debugLevel][time=${ctrlInfo.timer}] $MagicStr: "
+          printf((if(prefix) commonInfo else p"") + pable)
         }
       }
     }
   }
   def apply(debugLevel: XSLogLevel, ctrlInfo: LogPerfIO)
-           (prefix: Boolean, cond: Bool, pable: Printable)(implicit p: Parameters): Unit = {
-    apply(debugLevel, Some(ctrlInfo))(prefix, cond, pable)
+           (prefix: Boolean, cond: Bool, pable: Printable)(implicit p: Parameters, s: SourceInfo): Unit = {
+    apply(debugLevel, Some(ctrlInfo))(prefix, cond, pable)(p, s)
   }
 }
 
 sealed abstract class LogHelperCommon(val logLevel: XSLogLevel){
 
-  def apply(cond: Bool, fmt: String, data: Bits*)(implicit p: Parameters): Unit =
-    apply(cond, Printable.pack(fmt, data:_*))
-  def apply(cond: Bool, pable: Printable)(implicit p: Parameters): Unit = apply(true, cond, pable)
-  def apply(fmt: String, data: Bits*)(implicit p: Parameters): Unit =
-    apply(Printable.pack(fmt, data:_*))
-  def apply(pable: Printable)(implicit p: Parameters): Unit = apply(true.B, pable)
-  def apply(prefix: Boolean, cond: Bool, fmt: String, data: Bits*)(implicit p: Parameters): Unit =
-    apply(prefix, cond, Printable.pack(fmt, data:_*))
-  def apply(prefix: Boolean, cond: Bool, pable: Printable)(implicit p: Parameters): Unit ={
-    XSLog(logLevel)(prefix, cond, pable)
+  def apply(cond: Bool, fmt: String, data: Bits*)(implicit p: Parameters, s: SourceInfo): Unit =
+    apply(cond, Printable.pack(fmt, data:_*))(p, s)
+  def apply(cond: Bool, pable: Printable)(implicit p: Parameters, s: SourceInfo): Unit =
+    apply(true, cond, pable)(p, s)
+  def apply(fmt: String, data: Bits*)(implicit p: Parameters, s: SourceInfo): Unit =
+    apply(Printable.pack(fmt, data:_*))(p, s)
+  def apply(pable: Printable)(implicit p: Parameters, s: SourceInfo): Unit =
+    apply(true.B, pable)(p, s)
+  def apply(prefix: Boolean, cond: Bool, fmt: String, data: Bits*)(implicit p: Parameters, s: SourceInfo): Unit =
+    apply(prefix, cond, Printable.pack(fmt, data:_*))(p, s)
+  def apply(prefix: Boolean, cond: Bool, pable: Printable)(implicit p: Parameters, s: SourceInfo): Unit ={
+    XSLog(logLevel)(prefix, cond, pable)(p, s)
   }
 }
 

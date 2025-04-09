@@ -27,10 +27,10 @@ class LogPerfHelper extends BlackBox with HasBlackBoxInline {
       |  output        dump
       |);
       |
-      |assign timer         = `SIM_TOP_MODULE_NAME.difftest_timer;
-      |assign logEnable     = `SIM_TOP_MODULE_NAME.difftest_log_enable;
-      |assign clean         = `SIM_TOP_MODULE_NAME.difftest_perfCtrl_clean;
-      |assign dump          = `SIM_TOP_MODULE_NAME.difftest_perfCtrl_dump;
+      |  assign timer         = `SIM_TOP_MODULE_NAME.difftest_timer;
+      |  assign logEnable     = `SIM_TOP_MODULE_NAME.difftest_log_enable;
+      |  assign clean         = `SIM_TOP_MODULE_NAME.difftest_perfCtrl_clean;
+      |  assign dump          = `SIM_TOP_MODULE_NAME.difftest_perfCtrl_dump;
       |
       |endmodule
       |
