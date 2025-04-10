@@ -5,9 +5,10 @@ import chisel3.util._
 
 class FastQueue[T <: Data](gen:T, size:Int, deqDataNoX:Boolean) extends Module with HasCircularQueuePtrHelper {
   val io = IO(new Bundle {
-    val enq   = Flipped(Decoupled(gen))
-    val deq   = Decoupled(gen)
-    val count = Output(UInt(log2Ceil(size).W))
+    val enq     = Flipped(Decoupled(gen))
+    val deq     = Decoupled(gen)
+    val count   = Output(UInt(log2Ceil(size + 1).W))
+    val freeNum = Output(UInt(log2Ceil(size + 1).W))
   })
   require(size > 1)
   private val valids = RegInit(VecInit(Seq.fill(size)(false.B)))
@@ -30,6 +31,8 @@ class FastQueue[T <: Data](gen:T, size:Int, deqDataNoX:Boolean) extends Module w
   when(enqFire && enqPtrOH(size - 1)) {
     valids.last := true.B
     array.last := io.enq.bits
+  }.elsewhen(deqFire) {
+    valids.last := false.B
   }
 
   when(enqFire && !deqFire) {
@@ -44,6 +47,7 @@ class FastQueue[T <: Data](gen:T, size:Int, deqDataNoX:Boolean) extends Module w
   if(deqDataNoX) io.deq.bits := Mux(io.deq.valid, array.head, 0.U.asTypeOf(gen))
 
   io.count := PopCount(valids)
+  io.freeNum := size.U - io.count
   when(io.count.orR) {
     assert(io.deq.valid)
   }
