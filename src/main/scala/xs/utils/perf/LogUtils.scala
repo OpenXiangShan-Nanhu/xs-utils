@@ -42,7 +42,7 @@ case class LogUtilsOptions
 
 
 object XSLog {
-  val MagicStr = "__PERCENTAGE_M__"
+  val MagicStr = "_LOG_MODULE_PATH_"
   def apply(debugLevel: XSLogLevel, ctrlInfoOpt: Option[LogPerfIO] = None)
            (prefix: Boolean, cond: Bool, pable: Printable)(implicit p: Parameters, s: SourceInfo): Unit =
   {
@@ -61,7 +61,7 @@ object XSLog {
       if(!logOpts.fpgaPlatform && (enableDebug || enablePerf)) {
         val ctrlInfo = ctrlInfoOpt.getOrElse(Module(new LogPerfHelper).io)
         when(ctrlInfo.logEnable && cond) {
-          val commonInfo = p"[$debugLevel][time=${ctrlInfo.timer}] $MagicStr: "
+          val commonInfo = p"[$debugLevel][time=${ctrlInfo.timer}%0d] $MagicStr: "
           printf((if(prefix) commonInfo else p"") + pable)
         }
       }
