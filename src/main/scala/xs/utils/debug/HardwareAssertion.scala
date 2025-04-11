@@ -127,14 +127,15 @@ object HardwareAssertion {
    * @note desc must be defined as Printable (e.g. cf"xxx") to print chisel-type values
    * @note Default timeout threshold of 3,000,000 cycles corresponds to 1ms at 3GHz clock frequency
    */
-  def checkTimeout(clear: Bool, timeout: Int, desc: Printable)(implicit p: Parameters, s: SourceInfo): Unit = {
+  def checkTimeout(clear: Bool, timeout: Int, desc: Printable)(implicit p: Parameters, s: SourceInfo): Bool = {
     // At 3Ghz, 1ms equals 300_0000 cycles.
     val cnt = Counter(0 until 3000000, reset = clear)
     apply(!cnt._2, desc)(p, s)
     assert(cnt._1 < timeout.U, desc)(s)
+    cnt._1 === timeout.U
   }
 
-  def checkTimeout(clear: Bool, timeout: Int)(implicit p: Parameters, s: SourceInfo): Unit = {
+  def checkTimeout(clear: Bool, timeout: Int)(implicit p: Parameters, s: SourceInfo): Bool = {
     checkTimeout(clear, timeout, cf"")(p, s)
   }
 
