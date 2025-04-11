@@ -61,7 +61,7 @@ object XSLog {
       if(!logOpts.fpgaPlatform && (enableDebug || enablePerf)) {
         val ctrlInfo = ctrlInfoOpt.getOrElse(Module(new LogPerfHelper).io)
         when(ctrlInfo.logEnable && cond) {
-          val commonInfo = p"[$debugLevel][time=${ctrlInfo.timer}%0d] $MagicStr: "
+          val commonInfo = p"[$debugLevel][time=${ctrlInfo.timer}] $MagicStr: "
           printf((if(prefix) commonInfo else p"") + pable)
         }
       }
