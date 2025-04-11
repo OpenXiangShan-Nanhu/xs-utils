@@ -97,7 +97,7 @@ class PhyPriorityMuxGenerator[T <: Data] {
         n match {
             case Some(name) => name
             case None => {
-                "in" + num.toString()
+                "in" + num.toString
             }
         }
     }
@@ -114,7 +114,7 @@ class PhyPriorityMuxGenerator[T <: Data] {
     }
     def apply(): T = {
         rev_src = src.reverse
-        for (i <- 0 until rev_src.length) {
+        for (i <- rev_src.indices) {
             // println(rev_src(i)._3)
             sorted_src = (rev_src(i)._1 && (if (i == rev_src.length-1) true.B else (i+1 until rev_src.length).map(j => !rev_src(j)._1).reduce(_&&_)),
                 rev_src(i)._2, rev_src(i)._3, rev_src(i)._4) :: sorted_src
@@ -125,7 +125,7 @@ class PhyPriorityMuxGenerator[T <: Data] {
         val ins = sorted_src.map(s => (s._1, s._2))
         // we should use this sample data to get type and width
         // ugly
-        val sample = ins(0)._2
+        val sample = ins.head._2
         // println(src)
         // println(sorted_src)
         // println(ins)

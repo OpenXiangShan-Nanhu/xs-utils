@@ -18,7 +18,7 @@ package xs.utils
 
 import chisel3._
 import chisel3.util._
-import freechips.rocketchip.diplomacy.LazyModule
+import org.chipsalliance.diplomacy.lazymodule._
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.bundlebridge.BundleBridgeNexusNode
 import org.chipsalliance.diplomacy.lazymodule.LazyModuleImp

@@ -167,7 +167,7 @@ class MbistPipeline(level: Int, moduleName: String = s"MbistPipeline_${uniqueId}
 
   def registerCSV(intf: InterfaceInfo, csvName: String): Unit = {
     val gen = new MbistCsvGen(intf, this, csvName)
-    FileRegisters.add("mbist", s"$csvName.csv", gen.generate)
+    FileRegisters.add("mbist", s"$csvName.csv", gen.generate())
   }
 
   if(Mbist.isMaxLevel(level)) {
