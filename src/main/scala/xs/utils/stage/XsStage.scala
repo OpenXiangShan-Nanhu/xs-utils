@@ -13,7 +13,7 @@ class InitializeHwaPorts extends Phase {
   override def optionalPrerequisiteOf = Seq.empty
   override def invalidates(a: Phase) = false
 
-  private val pattern = "hwa_[0-9_]*".r
+  private val pattern = ".*hwa_[0-9_]*".r
 
   private def doDefModules(in: Seq[DefModule]): Seq[DefModule] = {
     in.map({

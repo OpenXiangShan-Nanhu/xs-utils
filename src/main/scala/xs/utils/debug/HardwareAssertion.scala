@@ -131,7 +131,6 @@ object HardwareAssertion {
     // At 3Ghz, 1ms equals 300_0000 cycles.
     val cnt = Counter(0 until 3000000, reset = clear)
     apply(!cnt._2, desc)(p, s)
-    assert(cnt._1 < timeout.U, desc)(s)
     cnt._1 === timeout.U
   }
 
@@ -154,6 +153,7 @@ object HardwareAssertion {
         val hwa_q = Module(new Queue(gen = UInt(width.W), entries = 2))
         val hwa_out = Wire(new HAssertBundle(Some(width)))
         dontTouch(hwa_arb.io)
+        hwa_out := DontCare
         hwa_arb.io.in.zip(cs).foreach({ case(a, b) =>
           val hwa = BoringUtils.bore(b.hassert).bus.get
           a.valid := hwa.valid
