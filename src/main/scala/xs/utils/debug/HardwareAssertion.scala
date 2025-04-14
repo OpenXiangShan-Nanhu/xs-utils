@@ -70,6 +70,15 @@ object HardwareAssertion {
     }).toSeq
   }
 
+  private def genDescStr(desc:Printable, s: SourceInfo):Printable = {
+    s match {
+      case SourceLine(filename, line, col) =>
+        val fn = filename.replaceAll("\\\\", "/")
+        cf"$fn:$line:$col: " + desc
+      case _ => desc
+    }
+  }
+
   /** Checks for a condition to be valid in the circuit at rising clock edge
    * when not in reset. If the condition evaluates to false, the circuit
    * simulation stops with an error. The assert id and user bits will be
@@ -80,12 +89,7 @@ object HardwareAssertion {
    * @note desc must be defined as Printable(e.g. cf"xxx") to print chisel-type values
    */
   def apply(cond:Bool, desc:Printable)(implicit p: Parameters, s: SourceInfo): Unit = {
-    val descStr = s match {
-      case SourceLine(filename, line, col) =>
-        val fn = filename.replaceAll("\\\\", "/")
-        cf"$fn:$line:$col: " + desc
-      case _ => desc
-    }
+    val descStr = genDescStr(desc, s)
     val assertCond = cond
     assert(assertCond, descStr)(s)
     val hwaP = p(HardwareAssertionKey)
@@ -128,14 +132,25 @@ object HardwareAssertion {
    * @note Default timeout threshold of 3,000,000 cycles corresponds to 1ms at 3GHz clock frequency
    */
   def checkTimeout(clear: Bool, timeout: Int, desc: Printable)(implicit p: Parameters, s: SourceInfo): Bool = {
-    // At 3Ghz, 1ms equals 300_0000 cycles.
-    val cnt = Counter(0 until 3000000, reset = clear)
-    apply(!cnt._2, desc)(p, s)
-    cnt._1 === timeout.U
+    // At 3Ghz, 1ms equals 3_000_000 cycles.
+    val to_val = 3_000_000
+    require(timeout <= to_val)
+    val to_cnt = RegInit(0.U(log2Ceil(to_val + 1).W))
+    when(clear) {
+      to_cnt := 0.U
+    }.elsewhen(to_cnt < to_val.U) {
+      to_cnt := to_cnt + 1.U
+    }
+    val eda_err = to_cnt >= timeout.U
+    val hwa_err = to_cnt >= to_val.U
+    val descStr = genDescStr(desc, s)
+    assert(!eda_err, descStr)
+    apply(!hwa_err, desc)(p, s)
+    eda_err
   }
 
   def checkTimeout(clear: Bool, timeout: Int)(implicit p: Parameters, s: SourceInfo): Bool = {
-    checkTimeout(clear, timeout, cf"")(p, s)
+    checkTimeout(clear, timeout, cf"timeout!")(p, s)
   }
 
   def placePipe(level: Int, moduleTop: Boolean = false)(implicit p: Parameters): Option[Seq[HAssertNode]] = {
