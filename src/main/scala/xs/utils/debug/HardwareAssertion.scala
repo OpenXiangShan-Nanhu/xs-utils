@@ -58,8 +58,9 @@ object HardwareAssertion {
     val hwaP = p(HardwareAssertionKey)
     pts.groupBy(_.desc.head._2).map({case(desc, ns) =>
       val asrtCnt = RegInit(hwaP.maxAssertRepeatNum.U(log2Ceil(hwaP.maxAssertRepeatNum + 1).W))
+      val asrtVlds = ns.map(n => RegNext(BoringUtils.bore(n.hassert.cond.get), false.B))
       val squashCond = Wire(new HAssertBundle(Some(hwaP.maxInfoBits)))
-      squashCond.bus.get.valid := Cat(ns.map(n => BoringUtils.bore(n.hassert.cond.get))).orR && asrtCnt.orR
+      squashCond.bus.get.valid := Cat(asrtVlds).orR && asrtCnt.orR
       squashCond.bus.get.bits := gid.U
       when(squashCond.bus.get.fire) {
         asrtCnt := asrtCnt - 1.U
