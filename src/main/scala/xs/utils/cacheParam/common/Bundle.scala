@@ -1,5 +1,5 @@
 
-package xs.utils.common
+package xs.utils.cacheParam.common
 
 import chisel3._
 import chisel3.util.BitPat.bitPatToUInt

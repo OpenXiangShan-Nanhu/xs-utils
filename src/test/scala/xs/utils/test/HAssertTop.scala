@@ -39,7 +39,7 @@ class ModA(implicit p:Parameters) extends Module {
 class HAssertTest extends Module {
   private val size = 2
   implicit val config:Parameters = new Config((_, _, _) => {
-    case HardwareAssertionKey => HwaParams(enable = true)
+    case HardwareAssertionKey => HwaParams(enable = false)
   })
   val io = IO(new Bundle{
     val a = Input(Vec(size, Bool()))
