@@ -1,9 +1,9 @@
-package xs.utils.cacheParam.prefetch
+package xs.utils.cache.prefetch
 
 import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import chisel3.util._
-import xs.utils.cacheParam.common.PrefetchRecv
+import xs.utils.cache.common.PrefetchRecv
 
 case class TPParameters(
     tpTableEntries: Int = 16384,

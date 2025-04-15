@@ -17,7 +17,7 @@
 
 // See LICENSE.SiFive for license details.
 
-package xs.utils.cacheParam
+package xs.utils.cache
 
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.cde.config.Field
@@ -34,8 +34,8 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util.{BundleField, BundleFieldBase, UIntToOH1}
 import org.chipsalliance.diplomacy.bundlebridge.BundleBridgeNexusNode
 import xs.utils.{ResetGen, Pipeline, FastArbiter}
-import xs.utils.cacheParam.common.{AliasKey, PreferCacheKey, PrefetchKey}
-import xs.utils.cacheParam.prefetch.{PrefetchParameters, TPmetaParameters}
+import xs.utils.cache.common.{AliasKey, PreferCacheKey, PrefetchKey}
+import xs.utils.cache.prefetch.{PrefetchParameters, TPmetaParameters}
 
 
 case object HCCacheParamsKey extends Field[HCCacheParameters](HCCacheParameters())

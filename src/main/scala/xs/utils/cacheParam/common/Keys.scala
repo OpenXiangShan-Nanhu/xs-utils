@@ -1,11 +1,11 @@
 
-package xs.utils.cacheParam.common
+package xs.utils.cache.common
 
 import chisel3._
 import freechips.rocketchip.util.{BundleField, ControlKey}
 import org.chipsalliance.cde.config.Field
 import freechips.rocketchip.tilelink._
-import xs.utils.cacheParam.L2Param
+import xs.utils.cache.L2Param
 // Pass virtual address of upper level cache
 case object VaddrKey extends ControlKey[UInt]("vaddr")
 case class VaddrField(width: Int) extends BundleField[UInt](VaddrKey, Output(UInt(width.W)), _ := 0.U(width.W))

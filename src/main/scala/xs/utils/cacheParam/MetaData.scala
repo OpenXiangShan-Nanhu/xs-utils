@@ -17,7 +17,7 @@
 
 // See LICENSE.SiFive for license details.
 
-package xs.utils.cacheParam
+package xs.utils.cache
 
 import chisel3._
 import chisel3.util._

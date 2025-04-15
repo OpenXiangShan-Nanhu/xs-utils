@@ -1,4 +1,4 @@
-package xs.utils.cacheParam.prefetch
+package xs.utils.cache.prefetch
 
 import org.chipsalliance.cde.config.Parameters
 import chisel3._

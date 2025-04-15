@@ -17,7 +17,7 @@
 
 // See LICENSE.SiFive for license details.
 
-package xs.utils.cacheParam
+package xs.utils.cache
 
 
 import chisel3._
@@ -26,10 +26,10 @@ import freechips.rocketchip.diplomacy.{BufferParams, AddressSet}
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
 import org.chipsalliance.cde.config.Field
-import xs.utils.cacheParam.common.{AliasKey, IsHitKey, PrefetchKey}
+import xs.utils.cache.common.{AliasKey, IsHitKey, PrefetchKey, VaddrKey}
 import xs.utils.tl.ReqSourceKey
-import xs.utils.cacheParam.CacheParameters
-import xs.utils.cacheParam.prefetch.PrefetchParameters
+import xs.utils.cache.CacheParameters
+import xs.utils.cache.prefetch.PrefetchParameters
 import xs.utils.debug.HardwareAssertionKey
 
 case object EnableCHI extends Field[Boolean](false)
@@ -57,14 +57,6 @@ case class MemBackTypeMMField() extends BundleField[Bool](MemBackTypeMM, Output(
 
 case object MemPageTypeNC extends ControlKey[Bool]("memPageType_NC")
 case class MemPageTypeNCField() extends BundleField[Bool](MemPageTypeNC, Output(Bool()), _ := false.B)
-
-// Pass virtual address of upper level cache
-case object VaddrKey extends ControlKey[UInt]("vaddr")
-case class VaddrField(width: Int) extends BundleField[UInt](VaddrKey, Output(UInt(width.W)), _ := 0.U(width.W))
-
-// Pass load_miss_acquire_keyword of upper level cache (L1)
-case object IsKeywordKey extends ControlKey[Bool]("isKeyword")
-case class IsKeywordField() extends BundleField[Bool](IsKeywordKey, Output(Bool()), _ := false.B)
 
 case class L2Param(
   name: String = "L2",
