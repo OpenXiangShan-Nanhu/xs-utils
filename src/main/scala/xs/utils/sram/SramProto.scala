@@ -135,8 +135,8 @@ object SramProto {
     powerCtl: Boolean
   ): (Instance[SramArray], String) = {
     val mcpStr = s"s${setup}h${hold}l${latency}"
-    val pwStr = if(powerCtl) "_pwctl" else ""
-    val mbist = if(hasMbist) "_bist" else ""
+    val pwStr = if(powerCtl) "p" else ""
+    val mbist = if(hasMbist) "b" else ""
     val numPort = if(singlePort) 1 else 2
     val maskWidth = width / maskSegments
     val sramName = Some(s"sram_array_${numPort}p${depth}x${width}m$maskWidth$mcpStr$pwStr$mbist$suffix")
