@@ -23,6 +23,7 @@ class DualPortSramTemplate[T <: Data](
   hasMbist: Boolean = false,
   suffix: String = "",
   powerCtl: Boolean = false,
+  outputReg: Boolean = false,
   foundry: String = "Unknown",
   sramInst: String = "STANDARD"
 ) extends Module {
@@ -48,7 +49,9 @@ class DualPortSramTemplate[T <: Data](
     sramInst = sramInst
   ))
 
-  private val mbp = Ram2MbistParams(sp, set, singlePort = true, ram.sramName, "", foundry, sramInst, if(hold > 1) 1 else 0, "None", this)
+  private val outputLatency = if(outputReg) 1 else 0
+  private val inputLatency = if(hold > 1) 1 else 0
+  private val mbp = Ram2MbistParams(sp, set, singlePort = true, ram.sramName, "", foundry, sramInst, outputLatency + inputLatency, "None", this)
   val io = IO(new Bundle{
     val wreq = Flipped(Decoupled(new DpSramWrite(gen, set, way)))
     val rreq = Flipped(Decoupled(UInt(log2Ceil(set).W)))
@@ -57,6 +60,8 @@ class DualPortSramTemplate[T <: Data](
     val broadcast = if(hasMbist) Some(new SramBroadcastBundle) else None
     val mbist = if(hasMbist) Some(new Ram2Mbist(mbp)) else None
   })
+  private val dataReg = Option.when(outputReg)(RegEnable(ram.io.r.resp.data, ram.io.r.resp.valid))
+  private val validReg = Option.when(outputReg)(RegNext(ram.io.r.resp.valid, false.B))
   private val finalWreq = Wire(Decoupled(new DpSramWrite(UInt(sp.sramSegBits.W), set, sp.sramMaskBits)))
   private val finalRreq = Wire(Decoupled(UInt(log2Ceil(set).W)))
   finalWreq.valid := io.wreq.valid
@@ -84,13 +89,13 @@ class DualPortSramTemplate[T <: Data](
       finalRreq.valid := io.mbist.get.re
       finalRreq.bits := io.mbist.get.addr_rd
     }
-    io.mbist.get.rdata := ram.io.r.resp.data.asUInt
+    io.mbist.get.rdata := io.rresp.bits.asUInt
   }
 
   ram.io.pwctl.foreach(_ := io.pwctl.get)
   ram.io.broadcast.foreach(_ := io.broadcast.get)
-  io.rresp.valid := ram.io.r.resp.valid
-  io.rresp.bits := ram.io.r.resp.data.asTypeOf(io.rresp.bits)
+  io.rresp.valid := validReg.getOrElse(ram.io.r.resp.valid)
+  io.rresp.bits := dataReg.getOrElse(ram.io.r.resp.data).asTypeOf(io.rresp.bits)
 
   ram.io.r.req.valid := finalRreq.valid
   ram.io.w.req.valid := finalWreq.valid

@@ -27,6 +27,7 @@ class SinglePortSramTemplate[T <: Data](
   hasMbist: Boolean = false,
   suffix: String = "",
   powerCtl: Boolean = false,
+  outputReg: Boolean = false,
   foundry: String = "Unknown",
   sramInst: String = "STANDARD"
 ) extends Module {
@@ -52,7 +53,9 @@ class SinglePortSramTemplate[T <: Data](
     sramInst = sramInst
   ))
 
-  private val mbp = Ram2MbistParams(sp, set, singlePort = true, ram.sramName, "", foundry, sramInst, if(hold > 1) 1 else 0, "None", this)
+  private val outputLatency = if(outputReg) 1 else 0
+  private val inputLatency = if(hold > 1) 1 else 0
+  private val mbp = Ram2MbistParams(sp, set, singlePort = true, ram.sramName, "", foundry, sramInst, outputLatency + inputLatency, "None", this)
   val io = IO(new Bundle{
     val req = Flipped(Decoupled(new SpSramReq(gen, set, way)))
     val resp = Valid(new SpSramResp(gen, way))
@@ -60,6 +63,8 @@ class SinglePortSramTemplate[T <: Data](
     val broadcast = if(hasMbist) Some(new SramBroadcastBundle) else None
     val mbist = if(hasMbist) Some(new Ram2Mbist(mbp)) else None
   })
+  private val dataReg = Option.when(outputReg)(RegEnable(ram.io.r.resp.data, ram.io.r.resp.valid))
+  private val validReg = Option.when(outputReg)(RegNext(ram.io.r.resp.valid, false.B))
   private val finalReq = Wire(Decoupled(new SpSramReq(UInt(sp.sramSegBits.W), set, sp.sramMaskBits)))
   finalReq.valid := io.req.valid
   finalReq.bits.addr := io.req.bits.addr
@@ -83,13 +88,13 @@ class SinglePortSramTemplate[T <: Data](
       finalReq.bits.mask.foreach(_ := sp.mbistMaskConverse(io.mbist.get.wmask, io.mbist.get.selectedOH))
       finalReq.bits.data := io.mbist.get.wdata.asTypeOf(finalReq.bits.data)
     }
-    io.mbist.get.rdata := ram.io.r.resp.data.asUInt
+    io.mbist.get.rdata := io.resp.bits.data.asUInt
   }
 
   ram.io.pwctl.foreach(_ := io.pwctl.get)
   ram.io.broadcast.foreach(_ := io.broadcast.get)
-  io.resp.valid := ram.io.r.resp.valid
-  io.resp.bits.data := ram.io.r.resp.data.asTypeOf(io.resp.bits.data)
+  io.resp.valid := validReg.getOrElse(ram.io.r.resp.valid)
+  io.resp.bits.data := dataReg.getOrElse(ram.io.r.resp.data).asTypeOf(io.resp.bits.data)
 
   ram.io.r.req.valid := finalReq.valid && !finalReq.bits.write
   ram.io.w.req.valid := finalReq.valid && finalReq.bits.write
