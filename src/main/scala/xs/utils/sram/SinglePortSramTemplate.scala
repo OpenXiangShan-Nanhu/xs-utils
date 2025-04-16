@@ -53,9 +53,8 @@ class SinglePortSramTemplate[T <: Data](
     sramInst = sramInst
   ))
 
-  private val outputLatency = if(outputReg) 1 else 0
-  private val inputLatency = if(hold > 1) 1 else 0
-  private val mbp = Ram2MbistParams(sp, set, singlePort = true, ram.sramName, "", foundry, sramInst, outputLatency + inputLatency, "None", this)
+  private val pipeline = if(hold > 1) 1 else 0
+  private val mbp = Ram2MbistParams(sp, set, singlePort = true, ram.sramName, "", foundry, sramInst, pipeline, "None", this)
   val io = IO(new Bundle{
     val req = Flipped(Decoupled(new SpSramReq(gen, set, way)))
     val resp = Valid(new SpSramResp(gen, way))
