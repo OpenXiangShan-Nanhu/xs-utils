@@ -19,7 +19,8 @@ class FoldedSRAMTemplate[T <: Data](
   hasMbist: Boolean = false,
   powerCtl: Boolean = false,
   foundry: String = "Unknown",
-  sramInst: String = "STANDARD")
+  sramInst: String = "STANDARD",
+  suffix: String = "")
   extends Module {
   val io = IO(new Bundle {
     val r = Flipped(new SRAMReadBus(gen, set, way))
@@ -51,7 +52,8 @@ class FoldedSRAMTemplate[T <: Data](
       useBitmask = useBitmask,
       powerCtl = powerCtl,
       foundry = foundry,
-      sramInst = sramInst
+      sramInst = sramInst,
+      suffix = suffix
     )
   )
   if(array.extra_reset.isDefined) array.extra_reset.get := extra_reset.get.asAsyncReset

@@ -49,7 +49,8 @@ class SramQueue[T <: Data](
   val hasFlush: Boolean = false,
   // use in sram
   val singlePort: Boolean = false,
-  val hasMbist: Boolean = false
+  val hasMbist: Boolean = false,
+  val suffix: String = ""
 ) extends Module {
   require(entries > -1, "Queue must have non-negative number of entries")
   require(entries != 0, "Use companion object Queue.apply for zero entries")
@@ -67,10 +68,11 @@ class SramQueue[T <: Data](
       singlePort = singlePort,
       bypassWrite = !singlePort,
       shouldReset = true,
-      hasMbist = hasMbist
+      hasMbist = hasMbist,
+      suffix = suffix
     )
   )
-  val mbistPl = MbistPipeline.PlaceMbistPipeline(1, place = hasMbist)
+  val mbistPl = MbistPipeline.PlaceMbistPipeline(1, "MbistPipeSramQueue", place = hasMbist)
 
   // when deq ready false, store sram data temporarily in a register.
   val temp_valid = RegInit(false.B)
