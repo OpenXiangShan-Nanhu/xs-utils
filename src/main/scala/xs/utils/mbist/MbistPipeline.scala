@@ -22,7 +22,7 @@ import chisel3.util._
 import xs.utils.FileRegisters
 import xs.utils.mbist.Mbist._
 import xs.utils.mbist.MbistPipeline.uniqueId
-import xs.utils.sram.SramHelper
+import xs.utils.sram.{SramBroadcastBundle, SramHelper}
 
 class MbitsStandardInterface(val params: MbistBusParams) extends Bundle {
   val array = Input(UInt(params.arrayWidth.W))
@@ -92,6 +92,33 @@ class MbistInterface(params: Seq[MbistBusParams], ids: Seq[Seq[Int]], name: Stri
     pip.mbist_indata := inData
     pip.mbist_readen := re
     pip.mbist_addr_rd := addrRd
+  }
+}
+
+object MbistInterface {
+  def apply(name:String, ramBrc:SramBroadcastBundle, enable:Boolean):Option[MbistInterface] = {
+    val cname = name.capitalize
+    val mbistPl = MbistPipeline.PlaceMbistPipeline(Int.MaxValue, s"MbistPipeline$cname", enable)
+    if (enable) {
+      val brc = SramHelper.genBroadCastBundleTop()
+      brc := ramBrc
+      val params = mbistPl.get.nodeParams
+      val intf = Module(new MbistInterface(
+        params = Seq(params),
+        ids = Seq(mbistPl.get.childrenIds),
+        name = s"MbistIntf$cname",
+        pipelineNum = 1
+      ))
+      intf.toPipeline.head <> mbistPl.get.mbist
+      mbistPl.get.registerCSV(intf.info, s"Mbist$cname")
+      intf.mbist := DontCare
+      dontTouch(intf.mbist)
+      intf.suggestName(s"mbistIntf$cname")
+      //TODO: add mbist controller connections here
+      Some(intf)
+    } else {
+      None
+    }
   }
 }
 
