@@ -387,4 +387,11 @@ class SRAMTemplate[T <: Data](
   private val resetHold = if(shouldReset) resetState else false.B
   io.r.req.ready := intvCntR === 0.U && !resetHold && !singleHold
   io.w.req.ready := intvCntW === 0.U && !resetHold
+
+  when(io.r.req.valid) {
+    assert(io.r.req.bits.setIdx < set.U, cf"Illegal read addr 0x${io.r.req.bits.setIdx}%x on SRAM, max addr is 0x${(set - 1).toHexString}")
+  }
+  when(io.w.req.valid) {
+    assert(io.w.req.bits.setIdx < set.U, cf"Illegal write addr 0x${io.w.req.bits.setIdx}%x on SRAM, max addr is 0x${(set - 1).toHexString}")
+  }
 }
