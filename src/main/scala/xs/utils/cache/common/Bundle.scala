@@ -22,6 +22,7 @@ class CMOReq extends Bundle {
 // custom l2 - l1 CMO inst resp(ack)
 class CMOResp extends Bundle {
   val address = UInt(64.W)
+  val nderr = Bool()
 }
 
 class TPmetaReq(hartIdLen: Int, fullAddressBits: Int, offsetBits: Int) extends Bundle {
