@@ -329,23 +329,25 @@ class SRAMTemplate[T <: Data](
   }
 
   private val rdataReg = Reg(UInt(dataWidth.W))
-  private val wMaskReg = RegEnable(_wmask, wen)
-  private val wBitMaskP = Cat(wMaskReg.asBools.map(m => Fill(elementWidth, m)).reverse)
-  private val wBitMaskN = (~wBitMaskP).asUInt
-  private val doBypassReg = doBypass.map(d => RegEnable(d, ren))
-  private val bypassData = (rdataReg & wBitMaskP) | (ramRdata & wBitMaskN)
-  when(doBypass.getOrElse(false.B)) {
+  private val doActualBypass = doBypass.getOrElse(false.B)
+  private val wBypassMask = Mux(doActualBypass, _wmask, 0.U(_wmask.getWidth.W))
+  private val wBypassMaskReg = RegEnable(wBypassMask, wen)
+  private val wBypassBitMaskP = Cat(wBypassMaskReg.asBools.map(m => Fill(elementWidth, m)).reverse)
+  private val wBypassBitMaskN = (~wBypassBitMaskP).asUInt
+  private val doBypassReg = RegEnable(doActualBypass, ren)
+  private val bypassData = (rdataReg & wBypassBitMaskP) | (ramRdata & wBypassBitMaskN)
+  when(doActualBypass) {
     rdataReg := wdata.asUInt
   }.elsewhen((respReg(0) && holdRead.B) || (mbistBd.ack && hasMbist.B)) {
-    rdataReg := Mux(doBypassReg.getOrElse(false.B), bypassData, ramRdata)
+    rdataReg := Mux(doBypassReg, bypassData, ramRdata)
   }
 
   if(holdRead && !enableBypass) {
     io.r.resp.data := Mux(respReg(0), ramRdata, rdataReg).asTypeOf(io.r.resp.data)
   } else if(!holdRead && enableBypass) {
-    io.r.resp.data := bypassData.asTypeOf(io.r.resp.data)
+    io.r.resp.data := Mux(respReg(0) & doBypassReg, bypassData, ramRdata).asTypeOf(io.r.resp.data)
   } else if(holdRead && enableBypass) {
-    io.r.resp.data := Mux(respReg(0), bypassData, rdataReg).asTypeOf(io.r.resp.data)
+    io.r.resp.data := Mux(respReg(0), Mux(doBypassReg, bypassData, ramRdata), rdataReg).asTypeOf(io.r.resp.data)
   } else {
     io.r.resp.data := ramRdata.asTypeOf(io.r.resp.data)
   }
