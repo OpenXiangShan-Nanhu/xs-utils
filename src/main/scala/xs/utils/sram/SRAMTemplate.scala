@@ -180,7 +180,6 @@ class SRAMTemplate[T <: Data](
   private val rcg = Module(new MbistClockGateCell(hold > 1))
   private val wcg = if(!singlePort) Some(Module(new MbistClockGateCell(hold > 1))) else None
   private val dataWidth = gen.getWidth * way
-  private val nodeNum = sp.mbistNodeNum
   private val (mbistBd, array, vname) = SramHelper.genRam(
     sp,
     set,
@@ -243,12 +242,10 @@ class SRAMTemplate[T <: Data](
     waddr
   }
 
-  private val mbistWmask = sp.mbistMaskConverse(mbistBd.wmask, mbistBd.selectedOH)
   private val funcWmask = sp.funcMaskConverse(wmask)
 
-  private val mbistWdata = Fill(nodeNum, mbistBd.wdata)
-  private val ramWmask = if(hasMbist) Mux(mbistBd.ack, mbistWmask, funcWmask) else funcWmask
-  private val ramWdata = if(hasMbist) Mux(mbistBd.ack, mbistWdata, wdata) else wdata
+  private val ramWmask = if(hasMbist) Mux(mbistBd.ack, mbistBd.wmask, funcWmask) else funcWmask
+  private val ramWdata = if(hasMbist) Mux(mbistBd.ack, mbistBd.wdata, wdata) else wdata
   private val ramRen = if(hasMbist) Mux(mbistBd.ack, mbistBd.re, ren) else ren
   private val ramRaddr = if(hasMbist) Mux(mbistBd.ack, mbistBd.addr_rd, raddr) else raddr
 
@@ -355,8 +352,7 @@ class SRAMTemplate[T <: Data](
   }
 
   io.r.resp.valid := respReg(0)
-  private val selectOHReg = RegEnable(mbistBd.selectedOH, respReg(0))
-  mbistBd.rdata := Mux1H(selectOHReg, rdataReg.asTypeOf(Vec(nodeNum, UInt((dataWidth / nodeNum).W))))
+  mbistBd.rdata := rdataReg
 
   private val interval = latency.max(hold)
   private val (intvCntR, intvCntW) = if(singlePort) {

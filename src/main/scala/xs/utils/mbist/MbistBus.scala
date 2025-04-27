@@ -84,13 +84,13 @@ case class Ram2MbistParams(
   sramParams: SramInfo,
   set:        Int,
   singlePort: Boolean,
-  vname:      String,
-  nodeSuffix: String,
-  foundry:    String,
-  sramInst:   String,
+  vname:      String = "",
+  nodeSuffix: String = "",
+  foundry:    String = "",
+  sramInst:   String = "",
   pipeDepth:  Int = 0,
   bankRange:  String = "None",
-  holder:     RawModule) {
+  holder:     RawModule = null) {
   val dataWidth = sramParams.mbistDataWidth
   val maskWidth = sramParams.mbistMaskWidth
   val maxArrayId = sramParams.mbistArrayIds.max

@@ -14,23 +14,24 @@ import scala.math.sqrt
 case class SramInfo (
   dataBits:Int,
   way:Int,
-  bist:Boolean
+  bist:Boolean,
+  mdw:Int = maxMbistDataWidth
 ) {
   private val ew = dataBits
-  private val isNto1 = ew > maxMbistDataWidth
+  private val isNto1 = ew > mdw
   //** ******implement mbist interface node(multiple nodes for one way)******
-  private val (mbistNodeNumForEachWay, mbistNodeNumNto1) = getNodeNumForEachWayAndNodeNum_Nto1(ew, way, maxMbistDataWidth)
+  private val (mbistNodeNumForEachWay, mbistNodeNumNto1) = getNodeNumForEachWayAndNodeNum_Nto1(ew, way, mdw)
   private val maskWidthNto1 = 1
   private val mbistDataWidthNto1 = (ew + mbistNodeNumForEachWay - 1) / mbistNodeNumForEachWay
   //** *******implement mbist interface node(one node for multiple ways)******
-  private val (wayNumForEachNode, mbistNodeNum1toN) = getWayNumForEachNodeAndNodeNum_1toN(ew, way, maxMbistDataWidth)
+  private val (wayNumForEachNode, mbistNodeNum1toN) = getWayNumForEachNodeAndNodeNum_1toN(ew, way, mdw)
   private val mbistDataWidth1toN = wayNumForEachNode * ew
   private val maskWidth1toN = wayNumForEachNode
 
   val mbistNodeNum = if(isNto1) mbistNodeNumNto1 else mbistNodeNum1toN
   val mbistDataWidth = if(isNto1) mbistDataWidthNto1 else mbistDataWidth1toN
   val mbistMaskWidth = if(isNto1) maskWidthNto1 else maskWidth1toN
-  val mbistArrayIds = if(bist) Seq.tabulate(mbistNodeNum)(idx => getDomainID + idx) else Seq.fill(mbistNodeNum)(0)
+  val mbistArrayIds = Seq.tabulate(mbistNodeNum)(idx => getDomainID + idx)
   val bitWrite = way != 1
   val sramMaskBits = if(isNto1) mbistNodeNum else way
   val sramDataBits = way * dataBits
@@ -119,6 +120,29 @@ object SramHelper {
     sramCtrlCfg
   }
 
+  def mapMbistBore(bore: Ram2Mbist): Ram2Mbist = {
+    val boreP = bore.params
+    val sp = boreP.sramParams
+    val nodeNum = sp.mbistNodeNum
+    val resMp = Ram2MbistParams(
+      sramParams = SramInfo(
+        dataBits = sp.sramDataBits / sp.sramMaskBits,
+        way = sp.sramMaskBits,
+        bist = false,
+        mdw = sp.sramDataBits
+      ),
+      set = boreP.set,
+      singlePort = boreP.singlePort
+    )
+    val res = Wire(new Ram2Mbist(resMp))
+    val selectOhReg = RegEnable(bore.selectedOH, bore.re)
+    res := bore
+    res.wdata := Fill(nodeNum, bore.wdata)
+    res.wmask := sp.mbistMaskConverse(bore.wmask, bore.selectedOH)
+    bore.rdata := Mux1H(selectOhReg, res.rdata.asTypeOf(Vec(nodeNum, UInt((sp.sramDataBits / nodeNum).W))))
+    res
+  }
+
   def genRam(
     sp: SramInfo,
     set: Int,
@@ -178,6 +202,6 @@ object SramHelper {
     if(pwctl.isDefined) {
       array.pwctl.get := pwctl.get
     }
-    (mbist, array, vname)
+    (mapMbistBore(mbist), array, vname)
   }
 }
