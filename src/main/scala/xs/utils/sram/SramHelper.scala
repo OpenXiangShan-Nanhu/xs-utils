@@ -136,7 +136,12 @@ object SramHelper {
     )
     val res = Wire(new Ram2Mbist(resMp))
     val selectOhReg = RegEnable(bore.selectedOH, bore.re)
-    res := bore
+    res := DontCare
+    res.addr := bore.addr
+    res.addr_rd := bore.addr_rd
+    res.re := bore.re
+    res.we := bore.we
+    res.ack := bore.ack
     res.wdata := Fill(nodeNum, bore.wdata)
     res.wmask := sp.mbistMaskConverse(bore.wmask, bore.selectedOH)
     bore.rdata := Mux1H(selectOhReg, res.rdata.asTypeOf(Vec(nodeNum, UInt((sp.sramDataBits / nodeNum).W))))
