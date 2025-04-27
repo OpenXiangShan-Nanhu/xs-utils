@@ -191,7 +191,7 @@ class SRAMTemplate[T <: Data](
     hasMbist,
     io.broadcast,
     pwctl,
-    io.ramctl,
+    io.sramCtrl,
     reset,
     rcg.out_clock,
     wcg.map(_.out_clock),
