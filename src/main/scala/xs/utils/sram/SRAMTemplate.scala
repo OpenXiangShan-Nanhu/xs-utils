@@ -167,7 +167,7 @@ class SRAMTemplate[T <: Data](
     val w = Flipped(new SRAMWriteBus(gen, set, way, useBitmask))
     val pwctl = if(powerCtl) Some(new SramPowerCtl) else None
     val broadcast = if(explictBist || hasMbist) Some(new SramBroadcastBundle) else None
-    val sram_ctrl = (new SramCtrlBundle)
+    val ramctl = (new SramCtrlBundle)
   })
   require(latency >= 1)
   require(setup >= 1)
