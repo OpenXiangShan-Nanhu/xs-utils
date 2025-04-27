@@ -66,6 +66,7 @@ object SramHelper {
   private var wrapperId = 0
   private var domainId = 0
   val broadCastBdQueue = new mutable.Queue[SramBroadcastBundle]
+  val sramCtrlQueue = new mutable.Queue[SramCtrlBundle]
 
   def getWayNumForEachNodeAndNodeNum_1toN(dw: Int, way: Int, mw: Int): (Int, Int) = {
     val dataNum1toNNode = mw / dw
@@ -109,6 +110,14 @@ object SramHelper {
     broadCastBdQueue.clear()
     res
   }
+  def genSramCtrlBundleTop(): SramCtrlBundle = {
+    val sramCtrlCfg = Wire(new SramCtrlBundle)
+    sramCtrlQueue.toSeq.foreach(bd => {
+      BoringUtils.bore(bd) := sramCtrlCfg
+    })
+    sramCtrlQueue.clear()
+    sramCtrlCfg
+  }
 
   def genRam(
     sp: SramInfo,
@@ -120,6 +129,7 @@ object SramHelper {
     bist: Boolean,
     broadcast: Option[SramBroadcastBundle],
     pwctl: Option[GenericSramPowerCtl],
+    sramCtrl: SramCtrlBundle,
     reset: Reset,
     rclk: Clock,
     wclk: Option[Clock],
@@ -161,6 +171,10 @@ object SramHelper {
       SramHelper.broadCastBdQueue.enqueue(broadcast.get)
       Mbist.addRamNode(mbist, sp.mbistArrayIds)
     }
+    dontTouch(sramCtrl)
+    sramCtrl := DontCare
+    SramHelper.sramCtrlQueue.enqueue(sramCtrl)
+    array.ctrl := sramCtrl
     if(pwctl.isDefined) {
       array.pwctl.get := pwctl.get
     }

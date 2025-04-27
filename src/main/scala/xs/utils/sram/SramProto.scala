@@ -26,6 +26,11 @@ class GenericSramPowerCtl extends Bundle {
   val shut_down = Input(Bool())
 }
 
+class SramCtrlBundle extends Bundle {
+  val cfg = Input(UInt(32.W))
+}
+
+
 @instantiable
 class SramArray(
   depth: Int,
@@ -40,6 +45,8 @@ class SramArray(
   require(width % maskSegments == 0)
   @public val mbist = if(hasMbist) Some(IO(new SramMbistIO)) else None
   @public val pwctl = if(powerCtl) Some(IO(new GenericSramPowerCtl)) else None
+  @public val ctrl = IO(new SramCtrlBundle)
+  dontTouch(ctrl)
   mbist.foreach(dontTouch(_))
   pwctl.foreach(dontTouch(_))
   val pwrBlock = if(powerCtl) {
@@ -148,7 +155,8 @@ object SramProto {
         hasMbist = hasMbist,
         sramName = sramName,
         powerCtl = powerCtl,
-        singlePort = singlePort))
+        singlePort = singlePort
+        ))
     }
     val array = Instance(defMap(sramName.get))
     SramProto.init(array, singlePort, clock, writeClock)
