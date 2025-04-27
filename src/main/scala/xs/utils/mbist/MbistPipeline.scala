@@ -222,18 +222,18 @@ class MbistPipeline(level: Int, moduleName: String = s"MbistPipeline_${uniqueId}
   private val pipelineNodesAck =
     if(pipelineNodes.nonEmpty) toNextPipeline.map(_.mbist_ack).reduce(_ | _) else true.B
 
-  private val arrayReg = RegEnable(mbist.mbist_array, 0.U, activated)
-  private val reqReg = RegNext(mbist.mbist_req, 0.U)
+  private val arrayReg = RegEnable(mbist.mbist_array, activated)
+  private val reqReg = RegNext(mbist.mbist_req, false.B)
   private val allReg = RegEnable(mbist.mbist_all, false.B, activated)
   mbist.mbist_ack := reqReg & pipelineNodesAck
 
-  private val wenReg = RegEnable(mbist.mbist_writeen, 0.U, activated)
-  private val beReg = RegEnable(mbist.mbist_be, 0.U, dataValid)
-  private val addrReg = RegEnable(mbist.mbist_addr, 0.U, dataValid)
-  private val dataInReg = RegEnable(mbist.mbist_indata, 0.U, dataValid)
+  private val wenReg = RegEnable(mbist.mbist_writeen, false.B, activated)
+  private val beReg = RegEnable(mbist.mbist_be, dataValid)
+  private val addrReg = RegEnable(mbist.mbist_addr, dataValid)
+  private val dataInReg = RegEnable(mbist.mbist_indata, dataValid)
 
-  private val renReg = RegEnable(mbist.mbist_readen, 0.U, activated)
-  private val addrRdReg = RegEnable(mbist.mbist_addr_rd, 0.U, dataValid)
+  private val renReg = RegEnable(mbist.mbist_readen, false.B, activated)
+  private val addrRdReg = RegEnable(mbist.mbist_addr_rd, dataValid)
 
   private val pipelineDataOut = Wire(Vec(toNextPipeline.length, mbist.mbist_outdata.cloneType))
   private val sramDataOut = Wire(Vec(toSRAM.length, mbist.mbist_outdata.cloneType))
