@@ -3,6 +3,7 @@ package xs.utils.sram
 import chisel3._
 import chisel3.util._
 import xs.utils.mbist.{Mbist, Ram2Mbist, Ram2MbistParams}
+import xs.utils.sram.SramHelper.genMbistBoreSink
 
 class SpSramReq[T <: Data](gen: T, set:Int, way:Int) extends Bundle {
   val addr = UInt(log2Ceil(set).W)
@@ -60,34 +61,27 @@ class SinglePortSramTemplate[T <: Data](
     val resp = Valid(new SpSramResp(gen, way))
     val pwctl = if(powerCtl) Some(new SramPowerCtl) else None
     val broadcast = if(hasMbist) Some(new SramBroadcastBundle) else None
-    val mbist = if(hasMbist) Some(new Ram2Mbist(mbp)) else None
   })
   private val dataReg = Option.when(outputReg)(RegEnable(ram.io.r.resp.data, ram.io.r.resp.valid))
   private val validReg = Option.when(outputReg)(RegNext(ram.io.r.resp.valid, false.B))
   private val finalReq = Wire(Decoupled(new SpSramReq(UInt(sp.sramSegBits.W), set, sp.sramMaskBits)))
+  private val mbistMerged = genMbistBoreSink(mbp, io.broadcast, hasMbist)
   finalReq.valid := io.req.valid
   finalReq.bits.addr := io.req.bits.addr
   finalReq.bits.write := io.req.bits.write
   finalReq.bits.mask.foreach(_ := sp.funcMaskConverse(io.req.bits.mask.getOrElse(Fill(way, true.B))))
   finalReq.bits.data := io.req.bits.data.asTypeOf(finalReq.bits.data)
   io.req.ready := finalReq.ready
-
   if(hasMbist) {
     ram.io.broadcast.get := io.broadcast.get
-    io.broadcast.get := DontCare
-    dontTouch(io.broadcast.get)
-    SramHelper.broadCastBdQueue.enqueue(io.broadcast.get)
-    io.mbist.get := DontCare
-    dontTouch(io.mbist.get)
-    Mbist.addRamNode(io.mbist.get, sp.mbistArrayIds)
-    when(io.mbist.get.ack) {
-      finalReq.valid := io.mbist.get.we || io.mbist.get.re
-      finalReq.bits.addr := io.mbist.get.addr_rd
-      finalReq.bits.write := io.mbist.get.we
-      finalReq.bits.mask.foreach(_ := sp.mbistMaskConverse(io.mbist.get.wmask, io.mbist.get.selectedOH))
-      finalReq.bits.data := io.mbist.get.wdata.asTypeOf(finalReq.bits.data)
+    when(mbistMerged.ack) {
+      finalReq.valid := mbistMerged.we || mbistMerged.re
+      finalReq.bits.addr := mbistMerged.addr_rd
+      finalReq.bits.write := mbistMerged.we
+      finalReq.bits.mask.foreach(_ := mbistMerged.wmask)
+      finalReq.bits.data := mbistMerged.wdata.asTypeOf(finalReq.bits.data)
     }
-    io.mbist.get.rdata := io.resp.bits.data.asUInt
+    mbistMerged.rdata := io.resp.bits.data.asUInt
   }
 
   ram.io.pwctl.foreach(_ := io.pwctl.get)

@@ -3,6 +3,7 @@ package xs.utils.sram
 import chisel3._
 import chisel3.util._
 import xs.utils.mbist.{Mbist, Ram2Mbist, Ram2MbistParams}
+import xs.utils.sram.SramHelper.genMbistBoreSink
 
 class DpSramWrite[T <: Data](gen: T, set:Int, way:Int) extends Bundle {
   val addr = UInt(log2Ceil(set).W)
@@ -57,10 +58,10 @@ class DualPortSramTemplate[T <: Data](
     val rresp = Valid(Vec(way, gen))
     val pwctl = if(powerCtl) Some(new SramPowerCtl) else None
     val broadcast = if(hasMbist) Some(new SramBroadcastBundle) else None
-    val mbist = if(hasMbist) Some(new Ram2Mbist(mbp)) else None
   })
   private val dataReg = Option.when(outputReg)(RegEnable(ram.io.r.resp.data, ram.io.r.resp.valid))
   private val validReg = Option.when(outputReg)(RegNext(ram.io.r.resp.valid, false.B))
+  private val mbistMerged = genMbistBoreSink(mbp, io.broadcast, hasMbist)
   private val finalWreq = Wire(Decoupled(new DpSramWrite(UInt(sp.sramSegBits.W), set, sp.sramMaskBits)))
   private val finalRreq = Wire(Decoupled(UInt(log2Ceil(set).W)))
   finalWreq.valid := io.wreq.valid
@@ -74,21 +75,15 @@ class DualPortSramTemplate[T <: Data](
 
   if(hasMbist) {
     ram.io.broadcast.get := io.broadcast.get
-    io.broadcast.get := DontCare
-    dontTouch(io.broadcast.get)
-    SramHelper.broadCastBdQueue.enqueue(io.broadcast.get)
-    io.mbist.get := DontCare
-    dontTouch(io.mbist.get)
-    Mbist.addRamNode(io.mbist.get, sp.mbistArrayIds)
-    when(io.mbist.get.ack) {
-      finalWreq.valid := io.mbist.get.we
-      finalWreq.bits.addr := io.mbist.get.addr
-      finalWreq.bits.mask.foreach(_ := sp.mbistMaskConverse(io.mbist.get.wmask, io.mbist.get.selectedOH))
-      finalWreq.bits.data := io.mbist.get.wdata.asTypeOf(finalWreq.bits.data)
-      finalRreq.valid := io.mbist.get.re
-      finalRreq.bits := io.mbist.get.addr_rd
+    when(mbistMerged.ack) {
+      finalWreq.valid := mbistMerged.we
+      finalWreq.bits.addr := mbistMerged.addr
+      finalWreq.bits.mask.foreach(_ := mbistMerged.wmask)
+      finalWreq.bits.data := mbistMerged.wdata.asTypeOf(finalWreq.bits.data)
+      finalRreq.valid := mbistMerged.re
+      finalRreq.bits := mbistMerged.addr_rd
     }
-    io.mbist.get.rdata := io.rresp.bits.asUInt
+    mbistMerged.rdata := io.rresp.bits.asUInt
   }
 
   ram.io.pwctl.foreach(_ := io.pwctl.get)

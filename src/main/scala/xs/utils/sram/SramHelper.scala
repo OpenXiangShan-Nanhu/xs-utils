@@ -120,7 +120,7 @@ object SramHelper {
     sramCtrlCfg
   }
 
-  def mapMbistBore(bore: Ram2Mbist): Ram2Mbist = {
+  private def mapMbistBore(bore: Ram2Mbist): Ram2Mbist = {
     val boreP = bore.params
     val sp = boreP.sramParams
     val nodeNum = sp.mbistNodeNum
@@ -141,6 +141,22 @@ object SramHelper {
     res.wmask := sp.mbistMaskConverse(bore.wmask, bore.selectedOH)
     bore.rdata := Mux1H(selectOhReg, res.rdata.asTypeOf(Vec(nodeNum, UInt((sp.sramDataBits / nodeNum).W))))
     res
+  }
+
+  def genMbistBoreSink(bdParam: Ram2MbistParams, broadcast:Option[SramBroadcastBundle], bist:Boolean): Ram2Mbist = {
+    val sp = bdParam.sramParams
+    val mbist = Wire(new Ram2Mbist(bdParam))
+    mbist := DontCare
+    mbist.selectedOH := Fill(mbist.selectedOH.getWidth, 1.U(1.W))
+    mbist.ack := false.B
+    mbist.we := false.B
+    mbist.re := false.B
+    mbist.wmask := Fill(sp.mbistMaskWidth, true.B)
+    if(bist) {
+      SramHelper.broadCastBdQueue.enqueue(broadcast.get)
+      Mbist.addRamNode(mbist, sp.mbistArrayIds)
+    }
+    mapMbistBore(mbist)
   }
 
   def genRam(
@@ -177,23 +193,10 @@ object SramHelper {
       "None",
       template
     )
-    val mbist = Wire(new Ram2Mbist(bdParam))
-    mbist := DontCare
-    mbist.selectedOH := Fill(mbist.selectedOH.getWidth, 1.U(1.W))
-    mbist.ack := false.B
-    mbist.we := false.B
-    mbist.re := false.B
-    mbist.wmask := Fill(sp.mbistMaskWidth, true.B)
+    val mbist = genMbistBoreSink(bdParam, broadcast, bist)
     if(broadcast.isDefined || bist) {
       array.mbist.get.dft_ram_bp_clken := broadcast.get.ram_bp_clken
       array.mbist.get.dft_ram_bypass := broadcast.get.ram_bypass
-    }
-    if(bist) {
-      dontTouch(mbist)
-      broadcast.get := DontCare
-      dontTouch(broadcast.get)
-      SramHelper.broadCastBdQueue.enqueue(broadcast.get)
-      Mbist.addRamNode(mbist, sp.mbistArrayIds)
     }
     dontTouch(sramCtrl)
     sramCtrl := DontCare
@@ -202,6 +205,6 @@ object SramHelper {
     if(pwctl.isDefined) {
       array.pwctl.get := pwctl.get
     }
-    (mapMbistBore(mbist), array, vname)
+    (mbist, array, vname)
   }
 }
