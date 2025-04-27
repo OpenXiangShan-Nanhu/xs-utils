@@ -174,7 +174,6 @@ object SramHelper {
     bist: Boolean,
     broadcast: Option[SramBroadcastBundle],
     pwctl: Option[GenericSramPowerCtl],
-    sramCtrl: SramCtrlBundle,
     reset: Reset,
     rclk: Clock,
     wclk: Option[Clock],
@@ -203,10 +202,10 @@ object SramHelper {
       array.mbist.get.dft_ram_bp_clken := broadcast.get.ram_bp_clken
       array.mbist.get.dft_ram_bypass := broadcast.get.ram_bypass
     }
-    dontTouch(sramCtrl)
-    sramCtrl := DontCare
-    SramHelper.sramCtrlQueue.enqueue(sramCtrl)
-    array.ctrl := sramCtrl
+    val ramctl = Wire(new SramCtrlBundle)
+    ramctl := DontCare
+    SramHelper.sramCtrlQueue.enqueue(ramctl)
+    array.ctrl := ramctl
     if(pwctl.isDefined) {
       array.pwctl.get := pwctl.get
     }
