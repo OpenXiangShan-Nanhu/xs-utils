@@ -111,12 +111,12 @@ object SramHelper {
     res
   }
   def gensramCtrlBundleTop(): SramCtrlBundle = {
-    val sram_ctrl_cfg = Wire(new SramCtrlBundle)
+    val sramCtrlCfg = Wire(new SramCtrlBundle)
     sramCtrlQueue.toSeq.foreach(bd => {
-      BoringUtils.bore(bd) := sram_ctrl_cfg
+      BoringUtils.bore(bd) := sramCtrlCfg
     })
     sramCtrlQueue.clear()
-    sram_ctrl_cfg
+    sramCtrlCfg
   }
 
   def genRam(
@@ -129,7 +129,7 @@ object SramHelper {
     bist: Boolean,
     broadcast: Option[SramBroadcastBundle],
     pwctl: Option[GenericSramPowerCtl],
-    sram_ctrl: SramCtrlBundle,
+    sramCtrl: SramCtrlBundle,
     reset: Reset,
     rclk: Clock,
     wclk: Option[Clock],
@@ -171,10 +171,10 @@ object SramHelper {
       SramHelper.broadCastBdQueue.enqueue(broadcast.get)
       Mbist.addRamNode(mbist, sp.mbistArrayIds)
     }
-    dontTouch(sram_ctrl)
-    sram_ctrl := DontCare
-    SramHelper.sramCtrlQueue.enqueue(sram_ctrl)
-    array.ctrl := sram_ctrl
+    dontTouch(sramCtrl)
+    sramCtrl := DontCare
+    SramHelper.sramCtrlQueue.enqueue(sramCtrl)
+    array.ctrl := sramCtrl
     if(pwctl.isDefined) {
       array.pwctl.get := pwctl.get
     }

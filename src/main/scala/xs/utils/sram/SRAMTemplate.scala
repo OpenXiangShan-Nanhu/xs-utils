@@ -167,7 +167,7 @@ class SRAMTemplate[T <: Data](
     val w = Flipped(new SRAMWriteBus(gen, set, way, useBitmask))
     val pwctl = if(powerCtl) Some(new SramPowerCtl) else None
     val broadcast = if(explictBist || hasMbist) Some(new SramBroadcastBundle) else None
-    val ramctl = (new SramCtrlBundle)
+    val sramCtrl = (new SramCtrlBundle)
   })
   require(latency >= 1)
   require(setup >= 1)
@@ -191,7 +191,7 @@ class SRAMTemplate[T <: Data](
     hasMbist,
     io.broadcast,
     pwctl,
-    io.sram_ctrl,
+    io.ramctl,
     reset,
     rcg.out_clock,
     wcg.map(_.out_clock),
@@ -343,7 +343,7 @@ class SRAMTemplate[T <: Data](
   }.elsewhen((respReg(0) && holdRead.B) || (mbistBd.ack && hasMbist.B)) {
     rdataReg := Mux(doBypassReg, bypassData, ramRdata)
   }
-  
+
   if(holdRead && !enableBypass) {
     io.r.resp.data := Mux(respReg(0), ramRdata, rdataReg).asTypeOf(io.r.resp.data)
   } else if(!holdRead && enableBypass) {
