@@ -175,16 +175,16 @@ class SRAMTemplate[T <: Data](
   } else {
     None
   }
-  private val hold = if(extraHold) setup + 1 else setup
-  private val rcg = Module(new MbistClockGateCell(hold > 1))
-  private val wcg = if(!singlePort) Some(Module(new MbistClockGateCell(hold > 1))) else None
+  private val isc = if(extraHold) setup + 1 else setup // input steady cycles
+  private val rcg = Module(new MbistClockGateCell(isc > 1))
+  private val wcg = if(!singlePort) Some(Module(new MbistClockGateCell(isc > 1))) else None
   private val dataWidth = gen.getWidth * way
   private val (mbistBd, array, vname) = SramHelper.genRam(
     sp,
     set,
     !singlePort,
     setup,
-    if(extraHold) 1 else 0,
+    if(extraHold) setup else setup - 1,
     latency,
     hasMbist,
     io.broadcast,
@@ -207,7 +207,7 @@ class SRAMTemplate[T <: Data](
 
   val extra_reset = if(extraReset) Some(IO(Input(AsyncReset()))) else None
   if(shouldReset) {
-    val resetGen = Module(new SramResetGen(set, hold))
+    val resetGen = Module(new SramResetGen(set, isc))
     resetGen.clock := clock
     if(extraReset) {
       resetGen.reset := (extra_reset.get.asBool | reset.asBool).asAsyncReset
@@ -248,7 +248,7 @@ class SRAMTemplate[T <: Data](
   private val ramRaddr = if(hasMbist) Mux(mbistBd.ack, mbistBd.addr_rd, raddr) else raddr
 
   private val (ckRen, renStretched) = if(inputMcp) {
-    val rreqReg = RegInit(0.U(hold.W))
+    val rreqReg = RegInit(0.U(isc.W))
     rreqReg.suggestName("rreqReg")
     val rstate = Cat(false.B, rreqReg)
     when(ramRen) {
@@ -264,7 +264,7 @@ class SRAMTemplate[T <: Data](
   }
 
   private val (ckWen, wenStretched) = if(inputMcp) {
-    val wreqReg = RegInit(0.U(hold.W))
+    val wreqReg = RegInit(0.U(isc.W))
     wreqReg.suggestName("wreqReg")
     val wstate = Cat(false.B, wreqReg)
     when(ramWen) {
@@ -352,7 +352,7 @@ class SRAMTemplate[T <: Data](
   io.r.resp.valid := respReg(0)
   mbistBd.rdata := rdataReg
 
-  private val interval = latency.max(hold)
+  private val interval = latency.max(isc)
   private val (intvCntR, intvCntW) = if(singlePort) {
     val intvCnt = RegInit(0.U(log2Ceil(interval + 1).W))
     intvCnt.suggestName("intvCnt")
