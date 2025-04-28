@@ -161,7 +161,7 @@ class SRAMTemplate[T <: Data](
   private val inputMcp = setup > 1 || extraHold
   private val actualWay = if (useBitmask) gen.getWidth * way else way
   private val elementWidth = if (useBitmask) 1 else gen.getWidth
-  val sp = SramInfo(elementWidth, actualWay, hasMbist)
+  val sp = SramInfo(elementWidth, actualWay, hasMbist || explictBist)
   val io = IO(new Bundle {
     val r = Flipped(new SRAMReadBus(gen, set, way))
     val w = Flipped(new SRAMWriteBus(gen, set, way, useBitmask))

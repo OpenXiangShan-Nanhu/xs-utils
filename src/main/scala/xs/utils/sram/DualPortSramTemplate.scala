@@ -29,7 +29,7 @@ class DualPortSramTemplate[T <: Data](
   sramInst: String = "STANDARD"
 ) extends Module {
   private val hold = if(extraHold) setup + 1 else setup
-  private val sp = SramInfo(gen.getWidth, way, hasMbist)
+  private val sp = SramInfo(gen.getWidth, way, bist = false)
   private val ram = Module(new SRAMTemplate(
     gen = UInt(sp.sramSegBits.W),
     set = set,
