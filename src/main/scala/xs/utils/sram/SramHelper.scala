@@ -180,6 +180,7 @@ object SramHelper {
     suffix: String,
     foundry: String,
     sramInst: String,
+    pipeDepth:  Int = 0,
     template: RawModule
   ): (Ram2Mbist, Instance[SramArray], String) = {
 
@@ -193,7 +194,7 @@ object SramHelper {
       "",
       foundry,
       sramInst,
-      0,
+      pipeDepth,
       "None",
       template
     )

@@ -155,6 +155,7 @@ class SRAMTemplate[T <: Data](
   explictBist:Boolean = false,
   suffix: String = "",
   powerCtl: Boolean = false,
+  pipeDepth:  Int = 0,
   val foundry: String = "Unknown",
   val sramInst: String = "STANDARD")
   extends Module {
@@ -195,6 +196,7 @@ class SRAMTemplate[T <: Data](
     suffix,
     foundry,
     sramInst,
+    pipeDepth,
     this
   )
   private val brcBd = io.broadcast.getOrElse(0.U.asTypeOf(new SramBroadcastBundle))
