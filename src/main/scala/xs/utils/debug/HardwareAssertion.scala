@@ -136,7 +136,7 @@ object HardwareAssertion {
     // At 3Ghz, 1ms equals 3_000_000 cycles.
     val to_val = 3_000_000
     require(timeout <= to_val)
-    val to_cnt = RegInit(0.U(log2Ceil(to_val + 1).W))
+    val to_cnt = Reg(UInt(log2Ceil(to_val + 1).W))
     when(clear) {
       to_cnt := 0.U
     }.elsewhen(to_cnt < to_val.U) {
