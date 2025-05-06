@@ -133,14 +133,11 @@ object HardwareAssertion {
    * @note Default timeout threshold of 3,000,000 cycles corresponds to 1ms at 3GHz clock frequency
    */
   def checkTimeout(clear: Bool, timeout: Int, desc: Printable)(implicit p: Parameters, s: SourceInfo): Bool = {
-    // At 3Ghz, 1ms equals 3_000_000 cycles.
-    val to_val = 3_000_000
+    val to_val = 0x1L << log2Ceil(3_000_000)
     require(timeout <= to_val)
     val to_cnt = Reg(UInt(log2Ceil(to_val + 1).W))
-    when(clear) {
-      to_cnt := 0.U
-    }.elsewhen(to_cnt < to_val.U) {
-      to_cnt := to_cnt + 1.U
+    when(clear || to_cnt < to_val.U) {
+      to_cnt := Mux(clear, 0.U, to_cnt + 1.U)
     }
     val eda_err = to_cnt >= timeout.U
     val hwa_err = to_cnt >= to_val.U
