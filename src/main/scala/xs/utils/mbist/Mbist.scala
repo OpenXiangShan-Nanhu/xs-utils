@@ -34,8 +34,9 @@ object Mbist {
 
   sealed class RamBaseNode(
     val bd:  Ram2Mbist,
-    val ids: Seq[Int])
-      extends BaseNode {
+    val ids: Seq[Int],
+    val isc: Int
+  ) extends BaseNode {
     override val level: Int = 0
     override val array_id = ids
     override val array_depth = Seq.fill(ids.length)(0)
@@ -52,7 +53,7 @@ object Mbist {
     require(level > 0)
   }
 
-  sealed class SramNode(bd: Ram2Mbist, ids: Seq[Int]) extends RamBaseNode(bd, ids)
+  sealed class SramNode(bd: Ram2Mbist, ids: Seq[Int], isc:Int) extends RamBaseNode(bd, ids, isc)
 
   sealed class PipelineNodeSram(bd: MbistBus, level: Int, array_id: Seq[Int], array_depth: Seq[Int])
       extends PipelineBaseNode(bd, level, array_id, array_depth)
@@ -87,8 +88,8 @@ object Mbist {
       }).reduce(_ || _)
     )
 
-  def addRamNode(bd: Ram2Mbist, ids: Seq[Int]): RamBaseNode = {
-    val node = new SramNode(bd, ids)
+  def addRamNode(bd: Ram2Mbist, ids: Seq[Int], isc:Int): RamBaseNode = {
+    val node = new SramNode(bd, ids, isc:Int)
     globalNodes = globalNodes :+ node
     node
   }
@@ -124,7 +125,7 @@ object Mbist {
         boreChildrenBd.array := childBd.array
         boreChildrenBd.ack := childBd.ack
         childBd.rdata := boreChildrenBd.rdata
-        new SramNode(childBd, ram.array_id)
+        new SramNode(childBd, ram.array_id, ram.isc)
       case pl: PipelineBaseNode =>
         val childBd = Wire(pl.bd.cloneType)
         childBd := DontCare

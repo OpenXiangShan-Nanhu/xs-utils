@@ -148,7 +148,7 @@ object SramHelper {
     res
   }
 
-  def genMbistBoreSink(bdParam: Ram2MbistParams, broadcast:Option[SramBroadcastBundle], bist:Boolean): Ram2Mbist = {
+  def genMbistBoreSink(bdParam: Ram2MbistParams, broadcast:Option[SramBroadcastBundle], bist:Boolean, isc:Int): Ram2Mbist = {
     val sp = bdParam.sramParams
     val mbist = Wire(new Ram2Mbist(bdParam))
     mbist := DontCare
@@ -159,7 +159,7 @@ object SramHelper {
     mbist.wmask := Fill(sp.mbistMaskWidth, true.B)
     if(bist) {
       SramHelper.broadCastBdQueue.enqueue(broadcast.get)
-      Mbist.addRamNode(mbist, sp.mbistArrayIds)
+      Mbist.addRamNode(mbist, sp.mbistArrayIds, isc)
     }
     mapMbistBore(mbist)
   }
@@ -198,7 +198,8 @@ object SramHelper {
       "None",
       template
     )
-    val mbist = genMbistBoreSink(bdParam, broadcast, bist)
+    val isc = if(hold > 0) setup + 1 else setup
+    val mbist = genMbistBoreSink(bdParam, broadcast, bist, isc)
     if(broadcast.isDefined || bist) {
       array.mbist.get.dft_ram_bp_clken := broadcast.get.ram_bp_clken
       array.mbist.get.dft_ram_bypass := broadcast.get.ram_bypass

@@ -28,7 +28,7 @@ class DualPortSramTemplate[T <: Data](
   foundry: String = "Unknown",
   sramInst: String = "STANDARD"
 ) extends Module {
-  private val hold = if(extraHold) setup + 1 else setup
+  private val isc = if(extraHold) setup + 1 else setup
   private val sp = SramInfo(gen.getWidth, way, bist = false)
   private val ram = Module(new SRAMTemplate(
     gen = UInt(sp.sramSegBits.W),
@@ -50,7 +50,7 @@ class DualPortSramTemplate[T <: Data](
     sramInst = sramInst
   ))
 
-  private val pipeline = if(hold > 1) 1 else 0
+  private val pipeline = if(isc > 1) 1 else 0
   private val mbp = Ram2MbistParams(sp, set, singlePort = true, ram.sramName, "", foundry, sramInst, pipeline, "None", this)
   val io = IO(new Bundle{
     val wreq = Flipped(Decoupled(new DpSramWrite(gen, set, way)))
@@ -61,7 +61,7 @@ class DualPortSramTemplate[T <: Data](
   })
   private val dataReg = Option.when(outputReg)(RegEnable(ram.io.r.resp.data, ram.io.r.resp.valid))
   private val validReg = Option.when(outputReg)(RegNext(ram.io.r.resp.valid, false.B))
-  private val mbistMerged = genMbistBoreSink(mbp, io.broadcast, hasMbist)
+  private val mbistMerged = genMbistBoreSink(mbp, io.broadcast, hasMbist, 1)
   private val finalWreq = Wire(Decoupled(new DpSramWrite(UInt(sp.sramSegBits.W), set, sp.sramMaskBits)))
   private val finalRreq = Wire(Decoupled(UInt(log2Ceil(set).W)))
   finalWreq.valid := io.wreq.valid
@@ -96,8 +96,8 @@ class DualPortSramTemplate[T <: Data](
   finalRreq.ready := ram.io.r.req.ready
   finalWreq.ready := ram.io.w.req.ready
 
-  private val wreqReg = if(hold > 1) RegEnable(finalWreq.bits, finalWreq.fire) else finalWreq.bits
-  private val rreqReg = if(hold > 1) RegEnable(finalRreq.bits, finalRreq.fire) else finalRreq.bits
+  private val wreqReg = if(isc > 1) RegEnable(finalWreq.bits, finalWreq.fire) else finalWreq.bits
+  private val rreqReg = if(isc > 1) RegEnable(finalRreq.bits, finalRreq.fire) else finalRreq.bits
   ram.io.r.req.bits.setIdx := rreqReg
   ram.io.w.req.bits.setIdx := wreqReg.addr
   ram.io.w.req.bits.data := wreqReg.data

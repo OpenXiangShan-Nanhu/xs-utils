@@ -32,7 +32,7 @@ class SinglePortSramTemplate[T <: Data](
   foundry: String = "Unknown",
   sramInst: String = "STANDARD"
 ) extends Module {
-  private val hold = if(extraHold) setup + 1 else setup
+  private val isc = if(extraHold) setup + 1 else setup
   private val sp = SramInfo(gen.getWidth, way, bist = false)
   private val ram = Module(new SRAMTemplate(
     gen = UInt(sp.sramSegBits.W),
@@ -54,7 +54,7 @@ class SinglePortSramTemplate[T <: Data](
     sramInst = sramInst
   ))
 
-  private val pipeline = if(hold > 1) 1 else 0
+  private val pipeline = if(isc > 1) 1 else 0
   private val mbp = Ram2MbistParams(sp, set, singlePort = true, ram.sramName, "", foundry, sramInst, pipeline, "None", this)
   val io = IO(new Bundle{
     val req = Flipped(Decoupled(new SpSramReq(gen, set, way)))
@@ -65,7 +65,7 @@ class SinglePortSramTemplate[T <: Data](
   private val dataReg = Option.when(outputReg)(RegEnable(ram.io.r.resp.data, ram.io.r.resp.valid))
   private val validReg = Option.when(outputReg)(RegNext(ram.io.r.resp.valid, false.B))
   private val finalReq = Wire(Decoupled(new SpSramReq(UInt(sp.sramSegBits.W), set, sp.sramMaskBits)))
-  private val mbistMerged = genMbistBoreSink(mbp, io.broadcast, hasMbist)
+  private val mbistMerged = genMbistBoreSink(mbp, io.broadcast, hasMbist, 1)
   finalReq.valid := io.req.valid
   finalReq.bits.addr := io.req.bits.addr
   finalReq.bits.write := io.req.bits.write
@@ -93,10 +93,10 @@ class SinglePortSramTemplate[T <: Data](
   ram.io.w.req.valid := finalReq.valid && finalReq.bits.write
   finalReq.ready := ram.io.w.req.ready
 
-  private val addr = if(hold > 1) RegEnable(finalReq.bits.addr, finalReq.fire) else finalReq.bits.addr
-  private val data = if(hold > 1) RegEnable(finalReq.bits.data, finalReq.fire && finalReq.bits.write) else finalReq.bits.data
+  private val addr = if(isc > 1) RegEnable(finalReq.bits.addr, finalReq.fire) else finalReq.bits.addr
+  private val data = if(isc > 1) RegEnable(finalReq.bits.data, finalReq.fire && finalReq.bits.write) else finalReq.bits.data
   private val mask = finalReq.bits.mask.map(m => {
-    if(hold > 1) {
+    if(isc > 1) {
       RegEnable(m, finalReq.fire && finalReq.bits.write)
     } else {
       m
