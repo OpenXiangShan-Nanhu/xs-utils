@@ -156,9 +156,11 @@ class SRAMTemplate[T <: Data](
   suffix: String = "",
   powerCtl: Boolean = false,
   pipeDepth:  Int = 0,
+  explicitHold: Boolean = false,
   val foundry: String = "Unknown",
   val sramInst: String = "STANDARD")
   extends Module {
+  require(!(explicitHold && extraHold))
   private val inputMcp = setup > 1 || extraHold
   private val actualWay = if (useBitmask) gen.getWidth * way else way
   private val elementWidth = if (useBitmask) 1 else gen.getWidth
@@ -185,7 +187,7 @@ class SRAMTemplate[T <: Data](
     set,
     !singlePort,
     setup,
-    if(extraHold) setup else setup - 1,
+    if(extraHold || explicitHold) setup else setup - 1,
     latency,
     hasMbist,
     io.broadcast,
