@@ -250,8 +250,8 @@ class MbistPipeline(level: Int, moduleName: String = s"MbistPipeline_${uniqueId}
         val selectedVec = child.array_id.map(_.U === arrayReg)
         val selected = selectedVec.reduce(_ || _)
         val doSpread = selected || allReg
-        val ren = if(child.isc > 1) mbist.mbist_readen else renReg
-        val wen = if(child.isc > 1) mbist.mbist_writeen else wenReg
+        val ren = if(child.een) mbist.mbist_readen else renReg
+        val wen = if(child.een) mbist.mbist_writeen else wenReg
         bd.addr := Mux(doSpread, addrReg(child.bd.params.addrWidth - 1, 0), 0.U)
         bd.addr_rd := Mux(doSpread, addrRdReg(child.bd.params.addrWidth - 1, 0), 0.U)
         bd.wdata := dataInReg(child.bd.params.dataWidth - 1, 0)

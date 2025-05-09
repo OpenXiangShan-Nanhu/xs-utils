@@ -48,6 +48,7 @@ class SinglePortSramTemplate[T <: Data](
     extraHold = extraHold,
     hasMbist = false,
     explictBist = hasMbist,
+    explicitHold = false,
     suffix = suffix,
     powerCtl = powerCtl,
     foundry = foundry,
@@ -65,7 +66,7 @@ class SinglePortSramTemplate[T <: Data](
   private val dataReg = Option.when(outputReg)(RegEnable(ram.io.r.resp.data, ram.io.r.resp.valid))
   private val validReg = Option.when(outputReg)(RegNext(ram.io.r.resp.valid, false.B))
   private val finalReq = Wire(Decoupled(new SpSramReq(UInt(sp.sramSegBits.W), set, sp.sramMaskBits)))
-  private val mbistMerged = genMbistBoreSink(mbp, io.broadcast, hasMbist, 1)
+  private val mbistMerged = genMbistBoreSink(mbp, io.broadcast, hasMbist, een = false)
   finalReq.valid := io.req.valid
   finalReq.bits.addr := io.req.bits.addr
   finalReq.bits.write := io.req.bits.write

@@ -44,6 +44,7 @@ class DualPortSramTemplate[T <: Data](
     extraHold = extraHold,
     hasMbist = false,
     explictBist = hasMbist,
+    explicitHold = false,
     suffix = suffix,
     powerCtl = powerCtl,
     foundry = foundry,
@@ -61,7 +62,7 @@ class DualPortSramTemplate[T <: Data](
   })
   private val dataReg = Option.when(outputReg)(RegEnable(ram.io.r.resp.data, ram.io.r.resp.valid))
   private val validReg = Option.when(outputReg)(RegNext(ram.io.r.resp.valid, false.B))
-  private val mbistMerged = genMbistBoreSink(mbp, io.broadcast, hasMbist, 1)
+  private val mbistMerged = genMbistBoreSink(mbp, io.broadcast, hasMbist, een = false)
   private val finalWreq = Wire(Decoupled(new DpSramWrite(UInt(sp.sramSegBits.W), set, sp.sramMaskBits)))
   private val finalRreq = Wire(Decoupled(UInt(log2Ceil(set).W)))
   finalWreq.valid := io.wreq.valid

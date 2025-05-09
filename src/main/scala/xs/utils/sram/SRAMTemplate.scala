@@ -183,23 +183,23 @@ class SRAMTemplate[T <: Data](
   private val wcg = if(!singlePort) Some(Module(new MbistClockGateCell(isc > 1))) else None
   private val dataWidth = gen.getWidth * way
   private val (mbistBd, array, vname) = SramHelper.genRam(
-    sp,
-    set,
-    !singlePort,
-    setup,
-    if(extraHold || explicitHold) setup else setup - 1,
-    latency,
-    hasMbist,
-    io.broadcast,
-    pwctl,
-    reset,
-    rcg.out_clock,
-    wcg.map(_.out_clock),
-    suffix,
-    foundry,
-    sramInst,
-    pipeDepth,
-    this
+    sp = sp,
+    set = set,
+    dp = !singlePort,
+    setup = setup,
+    hold = if(extraHold || explicitHold) setup else setup - 1,
+    latency = latency,
+    bist = hasMbist,
+    explicitHold = explicitHold,
+    broadcast = io.broadcast,
+    pwctl = pwctl,
+    rclk = rcg.out_clock,
+    wclk = wcg.map(_.out_clock),
+    suffix = suffix,
+    foundry = foundry,
+    sramInst = sramInst,
+    pipeDepth = pipeDepth,
+    template = this
   )
   private val brcBd = io.broadcast.getOrElse(0.U.asTypeOf(new SramBroadcastBundle))
   val sramName: String = vname
