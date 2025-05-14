@@ -85,7 +85,11 @@ class SinglePortSramTemplate[T <: Data](
     mbistMerged.rdata := io.resp.bits.data.asUInt
   }
 
-  ram.io.pwctl.foreach(_ := io.pwctl.get)
+  ram.io.pwctl.foreach(pc => {
+    pc.deact := Mux(mbistMerged.ack, false.B, io.pwctl.get.deact)
+    pc.ret := Mux(mbistMerged.ack, false.B, io.pwctl.get.ret)
+    pc.stop := Mux(mbistMerged.ack, false.B, io.pwctl.get.stop)
+  })
   ram.io.broadcast.foreach(_ := io.broadcast.get)
   io.resp.valid := validReg.getOrElse(ram.io.r.resp.valid)
   io.resp.bits.data := dataReg.getOrElse(ram.io.r.resp.data).asTypeOf(io.resp.bits.data)

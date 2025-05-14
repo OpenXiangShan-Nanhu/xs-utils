@@ -319,11 +319,11 @@ class SRAMTemplate[T <: Data](
       }
       pwctl.get.light_sleep := !activeReg
     } else {
-      pwctl.get.light_sleep := io.pwctl.get.deact
+      pwctl.get.light_sleep := Mux(mbistBd.ack, false.B, io.pwctl.get.deact)
     }
     if(powerCtl) {
-      pwctl.get.deep_sleep := io.pwctl.get.ret
-      pwctl.get.shut_down := io.pwctl.get.stop
+      pwctl.get.deep_sleep := Mux(mbistBd.ack, false.B, io.pwctl.get.ret)
+      pwctl.get.shut_down := Mux(mbistBd.ack, false.B, io.pwctl.get.stop)
     } else {
       pwctl.get.deep_sleep := false.B
       pwctl.get.shut_down := false.B
