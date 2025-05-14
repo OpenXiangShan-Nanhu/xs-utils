@@ -133,6 +133,7 @@ class SRAMWriteBus[T <: Data](
 }
 
 class SramPowerCtl extends Bundle {
+  val deact = Input(Bool())
   val ret = Input(Bool())
   val stop = Input(Bool())
 }
@@ -318,7 +319,7 @@ class SRAMTemplate[T <: Data](
       }
       pwctl.get.light_sleep := !activeReg
     } else {
-      pwctl.get.light_sleep := false.B
+      pwctl.get.light_sleep := io.pwctl.get.deact
     }
     if(powerCtl) {
       pwctl.get.deep_sleep := io.pwctl.get.ret
