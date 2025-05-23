@@ -191,7 +191,7 @@ class SRAMTemplate[T <: Data](
     hold = if(extraHold || explicitHold) setup else setup - 1,
     latency = latency,
     bist = hasMbist,
-    explicitHold = explicitHold,
+    extraHold = extraHold,
     broadcast = io.broadcast,
     pwctl = pwctl,
     rclk = rcg.out_clock,

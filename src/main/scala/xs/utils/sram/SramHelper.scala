@@ -172,7 +172,7 @@ object SramHelper {
     hold: Int,
     latency: Int,
     bist: Boolean,
-    explicitHold: Boolean,
+    extraHold: Boolean,
     broadcast: Option[SramBroadcastBundle],
     pwctl: Option[GenericSramPowerCtl],
     rclk: Clock,
@@ -199,7 +199,7 @@ object SramHelper {
       template
     )
     val isc = if(hold > 0) setup + 1 else setup
-    val mbist = genMbistBoreSink(bdParam, broadcast, bist, explicitHold)
+    val mbist = genMbistBoreSink(bdParam, broadcast, bist, extraHold)
     if(broadcast.isDefined || bist) {
       array.mbist.get.dft_ram_bp_clken := broadcast.get.ram_bp_clken
       array.mbist.get.dft_ram_bypass := broadcast.get.ram_bypass
