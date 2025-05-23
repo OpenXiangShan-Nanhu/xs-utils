@@ -265,7 +265,7 @@ class SRAMTemplate[T <: Data](
     val ramEn = rreqReg(0)
     (cgEn, ramEn)
   } else {
-    (ramRen, if(explicitHold) io.r.req.valid else ramRen)
+    (ramRen, if(explicitHold) Mux(mbistBd.ack, mbistBd.re, io.r.req.valid) else ramRen)
   }
 
   private val (ckWen, wenStretched) = if(inputMcp) {
@@ -281,7 +281,7 @@ class SRAMTemplate[T <: Data](
     val ramEn = wreqReg(0)
     (cgEn, ramEn)
   } else {
-    (ramWen, if(explicitHold) io.w.req.valid else ramWen)
+    (ramWen, if(explicitHold) Mux(mbistBd.ack, mbistBd.we, io.w.req.valid) else ramWen)
   }
 
   private val respReg = RegInit(0.U(latency.W))
