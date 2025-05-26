@@ -103,7 +103,7 @@ object HardwareAssertion {
       hashToCountMap(hashCode) = hashToCountMap(hashCode) + 1
       val pcode = s"${hashCode}_${hashToCountMap(hashCode) - 1}"
       val thisCond = IO(new HAssertBundle(None))
-      thisCond.cond.get := RegNext(!assertCond, false.B)
+      thisCond.cond.get := !assertCond
       thisCond.suggestName(s"hwa_$pcode")
       val node = HAssertNode(thisCond, Seq((0, pdesc)), 0)
       nodeSeq = nodeSeq :+ node
