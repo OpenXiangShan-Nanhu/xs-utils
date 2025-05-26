@@ -22,7 +22,7 @@ class InitializeHwaPorts extends Phase {
         if(hwaPorts.isEmpty) {
           mm
         } else {
-          val hwaStms = hwaPorts.map(h => Connect(NoInfo, SubField(Reference(h), "cond"), UIntLiteral(1, IntWidth(1))))
+          val hwaStms = hwaPorts.map(h => Connect(NoInfo, SubField(Reference(h), "cond"), UIntLiteral(0, IntWidth(1))))
           val newBody = Block(hwaStms ++ body.asInstanceOf[firrtl.ir.Block].stmts)
           mm.copy(body = newBody)
         }
