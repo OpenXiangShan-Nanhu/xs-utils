@@ -1,5 +1,7 @@
 package xs.utils.mbist
 
+import xs.utils.GlobalData
+
 import java.util.regex.Pattern
 
 abstract class MbistFileGenerator {
@@ -28,7 +30,7 @@ class MbistCsvGen(val intf: InterfaceInfo, val pip: MbistPipeline, val csvName: 
       .foreach({
         case ((p, id), depth) =>
           contents += removeSubstring(p.holder.pathName) + p.nodeSuffix + ","
-          contents += p.vname + ".sv,"
+          contents += GlobalData.prefix + p.vname + ".sv,"
           contents += id.toString + ","
           contents += (depth * 2 + p.pipeDepth).toString + ","
           contents += (if (p.bitWrite) "true," else "false,")
