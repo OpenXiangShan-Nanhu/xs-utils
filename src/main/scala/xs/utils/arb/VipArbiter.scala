@@ -23,9 +23,8 @@ class BaseVipArbiter[T <: Data](gen: T, size:Int) extends Module {
   for(i <- io.in.indices) {
     io.in(i).ready := selPtrOH(i) && io.out.ready
   }
-  private val vipPtrMove = Mux(vipSelValid, io.out.fire, validMask.orR)
+  val vipPtrMove = (validMask & (~vipPtrOH).asUInt).orR && Mux(vipSelValid, io.out.fire, true.B)
   val vipPtrNext = Wire(UInt(size.W))
-  val vipPtrOhShift = Cat(vipPtrOH(size - 2, 0), vipPtrOH(size - 1))
   when(vipPtrMove) {
     vipPtrOH := vipPtrNext
   }
@@ -58,11 +57,14 @@ class VipArbiter[T <: Data](gen: T, size:Int) extends BaseVipArbiter(gen, size) 
   private val highPtrNext = PriorityEncoderOH(highValidMask)
   private val lowPtrNext = PriorityEncoderOH(lowValidMask)
 
-  vipPtrNext := Mux(highValidMask.orR, highPtrNext, Mux(lowValidMask.orR, lowPtrNext, vipPtrOhShift))
+  vipPtrNext := Mux(highValidMask.orR, highPtrNext, lowPtrNext)
+  when(vipPtrMove) {
+    assert((vipPtrNext & validMask).orR)
+  }
 }
 
 class StepVipArbiter[T <: Data](gen: T, size:Int) extends BaseVipArbiter(gen, size) {
-  vipPtrNext := vipPtrOhShift
+  vipPtrNext := Cat(vipPtrOH(size - 2, 0), vipPtrOH(size - 1))
 }
 
 object BaseVipArbiter {
