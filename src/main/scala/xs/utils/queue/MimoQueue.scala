@@ -66,6 +66,7 @@ class MimoQueue[T <: Data]
   val io = IO(new Bundle {
     val enq = Vec(enqNum, Flipped(Decoupled(gen)))
     val deq = Vec(deqNum, Decoupled(gen))
+    val count = Output(UInt(log2Ceil(size + 1).W))
   })
 
   private val array = Reg(Vec(size, gen))
@@ -77,6 +78,7 @@ class MimoQueue[T <: Data]
   private val enqPtr = enqPtrVec.head
   private val deqPtr = deqPtrVec.head
 
+  io.count := size.U(log2Ceil(size + 1).W) - emptyEntries
   deqPtrVec := deqPtrVecNext
 
   private val enqAddrVec = Wire(Vec(enqNum, UInt(log2Ceil(size).W)))
