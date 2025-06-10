@@ -108,6 +108,7 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int) extends BlackBox with Has
     s"""module $fn (
        |$genIO
        |);
+       |${if(!sp) "  (* rw_addr_collision = \"yes\" *)" else ""}
        |  reg [${dw - 1}:0] mem [${set - 1}:0];
        |  reg [${dw - 1}:0] rdata;
        |${if(sp) genSpReadWrite else genDpReadWrite}
