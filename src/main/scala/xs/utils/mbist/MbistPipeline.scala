@@ -20,6 +20,7 @@ package xs.utils.mbist
 import chisel3._
 import chisel3.util._
 import xs.utils.FileRegisters
+import xs.utils.dft.BaseTestBundle
 import xs.utils.mbist.Mbist._
 import xs.utils.mbist.MbistPipeline.uniqueId
 import xs.utils.sram.{SramBroadcastBundle, SramHelper}
@@ -119,6 +120,9 @@ object MbistInterface {
     } else {
       None
     }
+  }
+  def apply(name:String, dftBrc:BaseTestBundle, enable:Boolean):Option[MbistInterface] = {
+    apply(name, dftBrc.toSramBroadCastBundle, enable)
   }
 }
 
