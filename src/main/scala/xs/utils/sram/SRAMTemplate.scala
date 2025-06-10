@@ -170,7 +170,7 @@ class SRAMTemplate[T <: Data](
     val r = Flipped(new SRAMReadBus(gen, set, way))
     val w = Flipped(new SRAMWriteBus(gen, set, way, useBitmask))
     val pwctl = if(powerCtl) Some(new SramPowerCtl) else None
-    val broadcast = if(explictBist || hasMbist) Some(new SramBroadcastBundle) else None
+    val broadcast = if(explictBist) Some(new SramBroadcastBundle) else None
   })
   require(latency >= 1)
   require(setup >= 1)
@@ -202,7 +202,7 @@ class SRAMTemplate[T <: Data](
     pipeDepth = pipeDepth,
     template = this
   )
-  private val brcBd = io.broadcast.getOrElse(0.U.asTypeOf(new SramBroadcastBundle))
+  private val brcBd = io.broadcast.getOrElse(mbistBd.broadcast)
   val sramName: String = vname
   if(extraReset) require(shouldReset)
 

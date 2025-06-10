@@ -66,7 +66,6 @@ object SramHelper {
   private var nodeId = 0
   private var wrapperId = 0
   private var domainId = 0
-  val broadCastBdQueue = new mutable.Queue[SramBroadcastBundle]
   val sramCtrlQueue = new mutable.Queue[SramCtrlBundle]
 
   def getWayNumForEachNodeAndNodeNum_1toN(dw: Int, way: Int, mw: Int): (Int, Int) = {
@@ -105,10 +104,6 @@ object SramHelper {
 
   def genBroadCastBundleTop(): SramBroadcastBundle = {
     val res = Wire(new SramBroadcastBundle)
-    broadCastBdQueue.toSeq.foreach(bd => {
-      BoringUtils.bore(bd) := res
-    })
-    broadCastBdQueue.clear()
     res
   }
   def genSramCtrlBundleTop(): SramCtrlBundle = {
@@ -142,13 +137,14 @@ object SramHelper {
     res.re := bore.re
     res.we := bore.we
     res.ack := bore.ack
+    res.broadcast := bore.broadcast
     res.wdata := Fill(nodeNum, bore.wdata)
     res.wmask := sp.mbistMaskConverse(bore.wmask, bore.selectedOH)
     bore.rdata := Mux1H(selectOhReg, res.rdata.asTypeOf(Vec(nodeNum, UInt((sp.sramDataBits / nodeNum).W))))
     res
   }
 
-  def genMbistBoreSink(bdParam: Ram2MbistParams, broadcast:Option[SramBroadcastBundle], bist:Boolean, een:Boolean): Ram2Mbist = {
+  def genMbistBoreSink(bdParam: Ram2MbistParams, bist:Boolean, een:Boolean): Ram2Mbist = {
     val sp = bdParam.sramParams
     val mbist = Wire(new Ram2Mbist(bdParam))
     mbist := DontCare
@@ -158,7 +154,6 @@ object SramHelper {
     mbist.re := false.B
     mbist.wmask := Fill(sp.mbistMaskWidth, true.B)
     if(bist) {
-      SramHelper.broadCastBdQueue.enqueue(broadcast.get)
       Mbist.addRamNode(mbist, sp.mbistArrayIds, een)
     }
     mapMbistBore(mbist)
@@ -199,10 +194,13 @@ object SramHelper {
       template
     )
     val isc = if(hold > 0) setup + 1 else setup
-    val mbist = genMbistBoreSink(bdParam, broadcast, bist, extraHold)
-    if(broadcast.isDefined || bist) {
+    val mbist = genMbistBoreSink(bdParam, bist, extraHold)
+    if(broadcast.isDefined) {
       array.mbist.get.dft_ram_bp_clken := broadcast.get.ram_bp_clken
       array.mbist.get.dft_ram_bypass := broadcast.get.ram_bypass
+    } else if(bist) {
+      array.mbist.get.dft_ram_bp_clken := mbist.broadcast.ram_bp_clken
+      array.mbist.get.dft_ram_bypass := mbist.broadcast.ram_bp_clken
     }
     val ramctl = Wire(new SramCtrlBundle)
     ramctl := DontCare

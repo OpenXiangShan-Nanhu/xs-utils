@@ -58,11 +58,10 @@ class DualPortSramTemplate[T <: Data](
     val rreq = Flipped(Decoupled(UInt(log2Ceil(set).W)))
     val rresp = Valid(Vec(way, gen))
     val pwctl = if(powerCtl) Some(new SramPowerCtl) else None
-    val broadcast = if(hasMbist) Some(new SramBroadcastBundle) else None
   })
   private val dataReg = Option.when(outputReg)(RegEnable(ram.io.r.resp.data, ram.io.r.resp.valid))
   private val validReg = Option.when(outputReg)(RegNext(ram.io.r.resp.valid, false.B))
-  private val mbistMerged = genMbistBoreSink(mbp, io.broadcast, hasMbist, een = false)
+  private val mbistMerged = genMbistBoreSink(mbp, hasMbist, een = false)
   private val finalWreq = Wire(Decoupled(new DpSramWrite(UInt(sp.sramSegBits.W), set, sp.sramMaskBits)))
   private val finalRreq = Wire(Decoupled(UInt(log2Ceil(set).W)))
   finalWreq.valid := io.wreq.valid
@@ -75,7 +74,7 @@ class DualPortSramTemplate[T <: Data](
   io.rreq.ready := finalRreq.ready
 
   if(hasMbist) {
-    ram.io.broadcast.get := io.broadcast.get
+    ram.io.broadcast.get := mbistMerged.broadcast
     when(mbistMerged.ack) {
       finalWreq.valid := mbistMerged.we
       finalWreq.bits.addr := mbistMerged.addr
@@ -92,7 +91,6 @@ class DualPortSramTemplate[T <: Data](
     pc.ret := Mux(mbistMerged.ack, false.B, io.pwctl.get.ret)
     pc.stop := Mux(mbistMerged.ack, false.B, io.pwctl.get.stop)
   })
-  ram.io.broadcast.foreach(_ := io.broadcast.get)
   io.rresp.valid := validReg.getOrElse(ram.io.r.resp.valid)
   io.rresp.bits := dataReg.getOrElse(ram.io.r.resp.data).asTypeOf(io.rresp.bits)
 

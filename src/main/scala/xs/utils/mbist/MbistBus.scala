@@ -21,9 +21,11 @@ import chisel3._
 import chisel3.util._
 import chisel3.util.experimental.BoringUtils
 import xs.utils.dft.RamTestBundle
-import xs.utils.sram.{SRAMTemplate, SramInfo}
+import xs.utils.sram.{SRAMTemplate, SramBroadcastBundle, SramInfo}
 
-class MbistCommonBundle extends Bundle
+class MbistCommonBundle extends Bundle {
+  val broadcast = new SramBroadcastBundle
+}
 
 case class MbistBusParams(
   array:       Int,

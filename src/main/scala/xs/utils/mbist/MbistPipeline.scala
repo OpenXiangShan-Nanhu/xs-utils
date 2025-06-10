@@ -92,6 +92,7 @@ class MbistInterface(params: Seq[MbistBusParams], ids: Seq[Seq[Int]], name: Stri
     pip.indata := inData
     pip.readen := re
     pip.addr_rd := addrRd
+    pip.broadcast := DontCare
   }
 }
 
@@ -100,8 +101,6 @@ object MbistInterface {
     val cname = name.capitalize
     val mbistPl = MbistPipeline.PlaceMbistPipeline(Int.MaxValue, s"MbistPipeline$cname", enable)
     if (enable) {
-      val brc = SramHelper.genBroadCastBundleTop()
-      brc := ramBrc
       val params = mbistPl.get.nodeParams
       val intf = Module(new MbistInterface(
         params = Seq(params),
@@ -110,6 +109,7 @@ object MbistInterface {
         pipelineNum = 1
       ))
       intf.toPipeline.head <> mbistPl.get.mbist
+      mbistPl.get.mbist.broadcast := ramBrc
       mbistPl.get.registerCSV(intf.info, s"Mbist$cname")
       intf.mbist := DontCare
       dontTouch(intf.mbist)
@@ -147,6 +147,7 @@ object MbistPipeline {
       res.mbist.indata := thisNode.bd.indata
       res.mbist.readen := thisNode.bd.readen
       res.mbist.addr_rd := thisNode.bd.addr_rd
+      res.mbist.broadcast := thisNode.bd.broadcast
       thisNode.bd.outdata := res.mbist.outdata
 
       res.toNextPipeline
@@ -163,6 +164,7 @@ object MbistPipeline {
             b.bd.indata := a.indata
             b.bd.readen := a.readen
             b.bd.addr_rd := a.addr_rd
+            b.bd.broadcast := a.broadcast
             a.outdata := b.bd.outdata
         })
 
@@ -179,6 +181,7 @@ object MbistPipeline {
             b.bd.ack := a.ack
             b.bd.selectedOH := a.selectedOH
             b.bd.array := a.array
+            b.bd.broadcast := a.broadcast
             a.rdata := b.bd.rdata
         })
       Some(res)
@@ -265,6 +268,7 @@ class MbistPipeline(level: Int, moduleName: String = s"MbistPipeline_${uniqueId}
           ~0.U(child.bd.selectedOH.getWidth.W)
         ).asUInt
         bd.array := arrayReg
+        bd.broadcast := mbist.broadcast
         dout := Mux(selected, bd.rdata, 0.U)
     })
   pipelineNodes
@@ -283,6 +287,7 @@ class MbistPipeline(level: Int, moduleName: String = s"MbistPipeline_${uniqueId}
         bd.indata := dataInReg(child.bd.params.dataWidth - 1, 0)
         bd.readen := Mux(doSpread, renReg, 0.U)
         bd.addr_rd := Mux(doSpread, addrRdReg(child.bd.params.addrWidth - 1, 0), 0.U)
+        bd.broadcast := mbist.broadcast
         dout := Mux(selected, bd.outdata, 0.U)
     })
 }

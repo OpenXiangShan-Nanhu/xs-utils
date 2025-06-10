@@ -61,12 +61,11 @@ class SinglePortSramTemplate[T <: Data](
     val req = Flipped(Decoupled(new SpSramReq(gen, set, way)))
     val resp = Valid(new SpSramResp(gen, way))
     val pwctl = if(powerCtl) Some(new SramPowerCtl) else None
-    val broadcast = if(hasMbist) Some(new SramBroadcastBundle) else None
   })
   private val dataReg = Option.when(outputReg)(RegEnable(ram.io.r.resp.data, ram.io.r.resp.valid))
   private val validReg = Option.when(outputReg)(RegNext(ram.io.r.resp.valid, false.B))
   private val finalReq = Wire(Decoupled(new SpSramReq(UInt(sp.sramSegBits.W), set, sp.sramMaskBits)))
-  private val mbistMerged = genMbistBoreSink(mbp, io.broadcast, hasMbist, een = false)
+  private val mbistMerged = genMbistBoreSink(mbp, hasMbist, een = false)
   finalReq.valid := io.req.valid
   finalReq.bits.addr := io.req.bits.addr
   finalReq.bits.write := io.req.bits.write
@@ -74,7 +73,7 @@ class SinglePortSramTemplate[T <: Data](
   finalReq.bits.data := io.req.bits.data.asTypeOf(finalReq.bits.data)
   io.req.ready := finalReq.ready
   if(hasMbist) {
-    ram.io.broadcast.get := io.broadcast.get
+    ram.io.broadcast.get := mbistMerged.broadcast
     when(mbistMerged.ack) {
       finalReq.valid := mbistMerged.we || mbistMerged.re
       finalReq.bits.addr := mbistMerged.addr_rd
@@ -90,7 +89,6 @@ class SinglePortSramTemplate[T <: Data](
     pc.ret := Mux(mbistMerged.ack, false.B, io.pwctl.get.ret)
     pc.stop := Mux(mbistMerged.ack, false.B, io.pwctl.get.stop)
   })
-  ram.io.broadcast.foreach(_ := io.broadcast.get)
   io.resp.valid := validReg.getOrElse(ram.io.r.resp.valid)
   io.resp.bits.data := dataReg.getOrElse(ram.io.r.resp.data).asTypeOf(io.resp.bits.data)
 

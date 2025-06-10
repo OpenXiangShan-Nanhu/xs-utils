@@ -114,34 +114,36 @@ object Mbist {
         val mbist = Wire(ram.bd.cloneType)
         mbist := DontCare
         dontTouch(mbist)
-        val boreChildrenBd = BoringUtils.bore(ram.bd)
-        boreChildrenBd.addr := mbist.addr
-        boreChildrenBd.addr_rd := mbist.addr_rd
-        boreChildrenBd.wdata := mbist.wdata
-        boreChildrenBd.wmask := mbist.wmask
-        boreChildrenBd.re := mbist.re
-        boreChildrenBd.we := mbist.we
-        boreChildrenBd.selectedOH := mbist.selectedOH
-        boreChildrenBd.array := mbist.array
-        boreChildrenBd.ack := mbist.ack
-        mbist.rdata := boreChildrenBd.rdata
+        val _mbist = BoringUtils.bore(ram.bd)
+        _mbist.addr := mbist.addr
+        _mbist.addr_rd := mbist.addr_rd
+        _mbist.wdata := mbist.wdata
+        _mbist.wmask := mbist.wmask
+        _mbist.re := mbist.re
+        _mbist.we := mbist.we
+        _mbist.selectedOH := mbist.selectedOH
+        _mbist.array := mbist.array
+        _mbist.ack := mbist.ack
+        _mbist.broadcast := mbist.broadcast
+        mbist.rdata := _mbist.rdata
         new SramNode(mbist, ram.array_id, ram.een)
       case pl: PipelineBaseNode =>
         val mbist = Wire(pl.bd.cloneType)
         mbist := DontCare
         dontTouch(mbist)
-        val boreChildrenBd = BoringUtils.bore(pl.bd)
-        boreChildrenBd.array := mbist.array
-        boreChildrenBd.all := mbist.all
-        boreChildrenBd.req := mbist.req
-        boreChildrenBd.writeen := mbist.writeen
-        boreChildrenBd.be := mbist.be
-        boreChildrenBd.addr := mbist.addr
-        boreChildrenBd.indata := mbist.indata
-        boreChildrenBd.readen := mbist.readen
-        boreChildrenBd.addr_rd := mbist.addr_rd
-        mbist.ack := boreChildrenBd.ack
-        mbist.outdata := boreChildrenBd.outdata
+        val _mbist = BoringUtils.bore(pl.bd)
+        _mbist.array := mbist.array
+        _mbist.all := mbist.all
+        _mbist.req := mbist.req
+        _mbist.writeen := mbist.writeen
+        _mbist.be := mbist.be
+        _mbist.addr := mbist.addr
+        _mbist.indata := mbist.indata
+        _mbist.readen := mbist.readen
+        _mbist.addr_rd := mbist.addr_rd
+        _mbist.broadcast := mbist.broadcast
+        mbist.ack := _mbist.ack
+        mbist.outdata := _mbist.outdata
         new PipelineNodeSram(mbist, pl.level, pl.array_id, pl.array_depth)
     }
     node.ramParamsBelongToThis = children.flatMap({
