@@ -20,24 +20,10 @@ package xs.utils.mbist
 import chisel3._
 import chisel3.util._
 import chisel3.util.experimental.BoringUtils
+import xs.utils.dft.RamTestBundle
 import xs.utils.sram.{SRAMTemplate, SramInfo}
 
-trait MbistBundleLike {
-  this: Bundle =>
-  def sink_elms: Seq[String]
-
-  def source_elms: Seq[String]
-
-  def get_sink_data: Seq[Data] = sink_elms.map(e => elements(e))
-
-  def get_source_data: Seq[Data] = sink_elms.map(e => elements(e))
-}
-
-abstract class MbistCommonBundle() extends Bundle with MbistBundleLike {
-  def sink_elms: Seq[String] = Seq()
-
-  def source_elms: Seq[String] = Seq()
-}
+class MbistCommonBundle extends Bundle
 
 case class MbistBusParams(
   array:       Int,
@@ -52,32 +38,21 @@ case class MbistBusParams(
 
 class MbistBus(val params: MbistBusParams) extends MbistCommonBundle() {
   // control signals
-  val mbist_array = Input(UInt(params.arrayWidth.W))
-  val mbist_all, mbist_req = Input(Bool())
-  val mbist_ack = Output(Bool())
+  val array = Input(UInt(params.arrayWidth.W))
+  val all, req = Input(Bool())
+  val ack = Output(Bool())
   // write
-  val mbist_writeen = Input(Bool())
-  val mbist_be = Input(UInt(params.maskWidth.W))
-  val mbist_addr = Input(UInt(params.addrWidth.W))
-  val mbist_indata = Input(UInt(params.dataWidth.W))
+  val writeen = Input(Bool())
+  val be = Input(UInt(params.maskWidth.W))
+  val addr = Input(UInt(params.addrWidth.W))
+  val indata = Input(UInt(params.dataWidth.W))
   // read
-  val mbist_readen = Input(Bool())
-  val mbist_addr_rd = Input(UInt(params.addrWidth.W)) // not used for single port srams
-  val mbist_outdata = Output(UInt(params.dataWidth.W))
+  val readen = Input(Bool())
+  val addr_rd = Input(UInt(params.addrWidth.W)) // not used for single port srams
+  val outdata = Output(UInt(params.dataWidth.W))
 
-  override def sink_elms: Seq[String] = super.sink_elms ++ Seq(
-    "mbist_array",
-    "mbist_all",
-    "mbist_req",
-    "mbist_writeen",
-    "mbist_be",
-    "mbist_addr",
-    "mbist_indata",
-    "mbist_readen",
-    "mbist_addr_rd"
-  )
-
-  override def source_elms: Seq[String] = super.source_elms ++ Seq("mbist_ack", "mbist_outdata")
+  def mbist_req:Bool = req
+  def mbist_ack:Bool = ack
 }
 
 case class Ram2MbistParams(
@@ -127,18 +102,4 @@ class Ram2Mbist(val params: Ram2MbistParams) extends MbistCommonBundle() {
   val ack = Input(Bool())
   val selectedOH = Input(UInt(params.nodeNum.W))
   val array = Input(UInt(params.arrayWidth.W))
-
-  override def sink_elms: Seq[String] = super.sink_elms ++ Seq(
-    "addr",
-    "addr_rd",
-    "wdata",
-    "wmask",
-    "re",
-    "we",
-    "ack",
-    "selectedOH",
-    "array"
-  )
-
-  override def source_elms: Seq[String] = super.source_elms ++ Seq("rdata")
 }

@@ -111,38 +111,38 @@ object Mbist {
     val node = new PipelineNodeSram(bd, level, ids, depth)
     node.children = children.map {
       case ram: RamBaseNode =>
-        val childBd = Wire(ram.bd.cloneType)
-        childBd := DontCare
-        dontTouch(childBd)
+        val mbist = Wire(ram.bd.cloneType)
+        mbist := DontCare
+        dontTouch(mbist)
         val boreChildrenBd = BoringUtils.bore(ram.bd)
-        boreChildrenBd.addr := childBd.addr
-        boreChildrenBd.addr_rd := childBd.addr_rd
-        boreChildrenBd.wdata := childBd.wdata
-        boreChildrenBd.wmask := childBd.wmask
-        boreChildrenBd.re := childBd.re
-        boreChildrenBd.we := childBd.we
-        boreChildrenBd.selectedOH := childBd.selectedOH
-        boreChildrenBd.array := childBd.array
-        boreChildrenBd.ack := childBd.ack
-        childBd.rdata := boreChildrenBd.rdata
-        new SramNode(childBd, ram.array_id, ram.een)
+        boreChildrenBd.addr := mbist.addr
+        boreChildrenBd.addr_rd := mbist.addr_rd
+        boreChildrenBd.wdata := mbist.wdata
+        boreChildrenBd.wmask := mbist.wmask
+        boreChildrenBd.re := mbist.re
+        boreChildrenBd.we := mbist.we
+        boreChildrenBd.selectedOH := mbist.selectedOH
+        boreChildrenBd.array := mbist.array
+        boreChildrenBd.ack := mbist.ack
+        mbist.rdata := boreChildrenBd.rdata
+        new SramNode(mbist, ram.array_id, ram.een)
       case pl: PipelineBaseNode =>
-        val childBd = Wire(pl.bd.cloneType)
-        childBd := DontCare
-        dontTouch(childBd)
+        val mbist = Wire(pl.bd.cloneType)
+        mbist := DontCare
+        dontTouch(mbist)
         val boreChildrenBd = BoringUtils.bore(pl.bd)
-        boreChildrenBd.mbist_array := childBd.mbist_array
-        boreChildrenBd.mbist_all := childBd.mbist_all
-        boreChildrenBd.mbist_req := childBd.mbist_req
-        boreChildrenBd.mbist_writeen := childBd.mbist_writeen
-        boreChildrenBd.mbist_be := childBd.mbist_be
-        boreChildrenBd.mbist_addr := childBd.mbist_addr
-        boreChildrenBd.mbist_indata := childBd.mbist_indata
-        boreChildrenBd.mbist_readen := childBd.mbist_readen
-        boreChildrenBd.mbist_addr_rd := childBd.mbist_addr_rd
-        childBd.mbist_ack := boreChildrenBd.mbist_ack
-        childBd.mbist_outdata := boreChildrenBd.mbist_outdata
-        new PipelineNodeSram(childBd, pl.level, pl.array_id, pl.array_depth)
+        boreChildrenBd.array := mbist.array
+        boreChildrenBd.all := mbist.all
+        boreChildrenBd.req := mbist.req
+        boreChildrenBd.writeen := mbist.writeen
+        boreChildrenBd.be := mbist.be
+        boreChildrenBd.addr := mbist.addr
+        boreChildrenBd.indata := mbist.indata
+        boreChildrenBd.readen := mbist.readen
+        boreChildrenBd.addr_rd := mbist.addr_rd
+        mbist.ack := boreChildrenBd.ack
+        mbist.outdata := boreChildrenBd.outdata
+        new PipelineNodeSram(mbist, pl.level, pl.array_id, pl.array_depth)
     }
     node.ramParamsBelongToThis = children.flatMap({
       case ram: RamBaseNode =>
