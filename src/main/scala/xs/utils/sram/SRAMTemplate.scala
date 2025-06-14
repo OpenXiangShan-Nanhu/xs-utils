@@ -317,7 +317,7 @@ class SRAMTemplate[T <: Data](
       }.elsewhen(activeReg.orR) {
         activeReg := Cat(false.B, activeReg) >> 1
       }
-      pwctl.get.light_sleep := !activeReg
+      pwctl.get.light_sleep := !activeReg(0)
     } else {
       pwctl.get.light_sleep := Mux(mbistBd.ack, false.B, io.pwctl.get.deact)
     }
