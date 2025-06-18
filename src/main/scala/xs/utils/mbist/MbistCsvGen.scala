@@ -13,7 +13,7 @@ class MbistCsvGen(val intf: InterfaceInfo, val pip: MbistPipeline, val csvName: 
     val fileName = s"$csvName.csv"
     println(s"Generating $fileName")
     var contents = "\"INTF Name\", \"INTF Addr\", \"INTF Data\", \"INTF Array\", \"INTF Be\", \"Has TpSRAM\"\n"
-    contents += intf.toString + '\n'
+    contents += GlobalData.prefix + intf.toString + '\n'
     contents += "\"SRAM Name\",\"SRAM Type\",\"SRAM array\",\"pipeline depth\",\"bitWrite\",\"bank addr\",\"selectOH width\",\"foundry\",\"SRAM Inst\"\n"
     val pipPath = pip.pathName.split("\\.").init.map(_ + ".").reduce(_ + _)
     val pattern = Pattern.compile(pipPath)
