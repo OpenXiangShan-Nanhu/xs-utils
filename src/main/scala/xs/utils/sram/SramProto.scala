@@ -49,11 +49,6 @@ class SramArray(
   dontTouch(ctrl)
   mbist.foreach(dontTouch(_))
   pwctl.foreach(dontTouch(_))
-  val pwrBlock = if(powerCtl) {
-    pwctl.get.light_sleep || pwctl.get.deep_sleep || pwctl.get.shut_down
-  } else {
-    false.B
-  }
 
   @public val RW0 = if(singlePort) Some(IO(new SpRamRwIO(width, maskSegments, depth))) else None
   @public val R0 = if(!singlePort) Some(IO(new DpRamRIO(width, depth))) else None
@@ -62,17 +57,17 @@ class SramArray(
   private val mem = Module(new SramInstGen(singlePort, width, maskSegments, depth))
   mem.io.RW0.foreach(rw => {
     rw <> RW0.get
-    rw.en := RW0.get.en & !pwrBlock
-    RW0.get.rdata := Mux(pwrBlock, 0.U, rw.rdata)
+    rw.en := RW0.get.en
+    RW0.get.rdata := rw.rdata
   })
   mem.io.R0.foreach(r => {
     r <> R0.get
-    r.en := R0.get.en & !pwrBlock
-    R0.get.data := Mux(pwrBlock, 0.U, r.data)
+    r.en := R0.get.en
+    R0.get.data := r.data
   })
   mem.io.W0.foreach(w => {
     w <> W0.get
-    w.en := W0.get.en & !pwrBlock
+    w.en := W0.get.en
   })
 
   override def desiredName: String = sramName.getOrElse(super.desiredName)
