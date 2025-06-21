@@ -26,8 +26,10 @@ class DualPortSramTemplate[T <: Data](
   powerCtl: Boolean = false,
   outputReg: Boolean = false,
   foundry: String = "Unknown",
-  sramInst: String = "STANDARD"
+  sramInst: String = "STANDARD",
+  moduleName: Option[String] = None
 ) extends Module {
+  override val desiredName = moduleName.getOrElse("DualPortSramTemplate")
   private val isc = if(extraHold) setup + 1 else setup
   private val sp = SramInfo(gen.getWidth, way, bist = false)
   private val ram = Module(new SRAMTemplate(
