@@ -105,7 +105,8 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int) extends BlackBox with Has
        |  end""".stripMargin
 
   setInline(fn + ".sv",
-    s"""module $fn (
+    s"""// VCS coverage exclude_file
+       |module $fn (
        |$genIO
        |);
        |${if(!sp) "  (* rw_addr_collision = \"yes\" *)" else ""}
