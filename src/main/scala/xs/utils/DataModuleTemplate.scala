@@ -177,7 +177,7 @@ class DataModuleTemplate[T <: Data](
   })
 
   override def desiredName: String = s"DataModule_${parentModule}_${numEntries}entry"
-  val data = Reg(Vec(numEntries, gen))
+  private val data = Mem(numEntries, gen)
 
   // if use bypassEnable to control bypass of each port,
   // then we should have a separate bit for each read port
@@ -186,24 +186,16 @@ class DataModuleTemplate[T <: Data](
   for (i <- 0 until numRead) {
     val bypass_en = perReadPortBypassEnable.map(_(i)).getOrElse(true)
     val read_by = io.wen.zip(io.waddr).map(w => w._1 && w._2 === io.raddr(i))
-    val addr_dec = UIntToOH(io.raddr(i), numEntries)
-    if (bypass_en) {
-      when (VecInit(read_by).asUInt.orR) {
-        io.rdata(i) := Mux1H(read_by, io.wdata)
-      } .otherwise {
-        io.rdata(i) := Mux1H(addr_dec, data)
-      }
-    } else {
-      io.rdata(i) := Mux1H(addr_dec, data)
+    io.rdata(i) := data(io.raddr(i))
+    when (VecInit(read_by).asUInt.orR && bypass_en.B) {
+      io.rdata(i) := Mux1H(read_by, io.wdata)
     }
   }
 
   // write ports
-  val waddr_dec = io.waddr.map(a => UIntToOH(a))
-  for (j <- 0 until numEntries) {
-    val write_wen = io.wen.zip(waddr_dec).map(w => w._1 && w._2(j))
-    when (VecInit(write_wen).asUInt.orR) {
-      data(j) := Mux1H(write_wen, io.wdata)
+  for(((we, wa), wd) <- io.wen.zip(io.waddr).zip(io.wdata)) {
+    when(we) {
+      data(wa) := wd
     }
   }
 }
