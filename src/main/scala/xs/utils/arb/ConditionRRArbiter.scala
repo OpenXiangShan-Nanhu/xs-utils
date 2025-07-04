@@ -10,8 +10,9 @@ class ConditionRRArbiter[T <: Data](gen: T, size:Int, selfCmpOtherFunc: (T, T) =
     val out = Decoupled(gen)
     val chosen = Output(UInt(log2Ceil(size).W))
   })
+  private val active = Cat(io.in.map(_.valid)).orR
   private val selector = Module(new SelNto1(gen, size, selfCmpOtherFunc))
-  private val selReg = RegNext(selector.io.out) // Do not gate this reg
+  private val selReg = RegEnable(selector.io.out, active)
   private val selArb = Module(new ResetRRArbiter(gen, size))
 
   for(i <- io.in.indices) {
@@ -19,7 +20,7 @@ class ConditionRRArbiter[T <: Data](gen: T, size:Int, selfCmpOtherFunc: (T, T) =
     selector.io.in(i).bits := io.in(i).bits
     io.in(i).ready := selArb.io.in(i).fire
 
-    selArb.io.in(i).valid := selReg(i)
+    selArb.io.in(i).valid := selReg(i) & io.in(i).valid
     selArb.io.in(i).bits := io.in(i).bits
   }
   io.chosen := selArb.io.chosen
