@@ -3,12 +3,7 @@ package xs.utils.arb
 import chisel3._
 import chisel3.util._
 
-class BaseVipArbiter[T <: Data](gen: T, size:Int) extends Module {
-  val io = IO(new Bundle {
-    val in = Flipped(Vec(size, Decoupled(gen)))
-    val out = Decoupled(gen)
-    val chosen = Output(UInt(log2Ceil(size).W))
-  })
+class BaseVipArbiter[T <: Data](gen: T, size:Int) extends BaseArbiter(gen, size) {
   val valids = VecInit(io.in.map(_.valid))
   val validMask = valids.asUInt
 
