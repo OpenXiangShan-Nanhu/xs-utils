@@ -88,13 +88,13 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends Bl
        |  always @ (posedge R0_clk) begin
        |    if(R0_en) rdata <= mem[R0_addr];
        |  end
-       |${if(delay) "`ifdef DELAY_READ" else "  assign R0_rdata = rdata;"}
+       |${if(delay) "`ifdef DELAY_READ" else "  assign R0_data = rdata;"}
        |${if(delay) "  always @ (posedge R0_clk) begin" else ""}
        |${if(delay) "    rdata_delay <= rdata;" else ""}
        |${if(delay) "  end" else ""}
-       |${if(delay) "  assign R0_rdata = rdata_delay;" else ""}
+       |${if(delay) "  assign R0_data = rdata_delay;" else ""}
        |${if(delay) "`else" else ""}
-       |${if(delay) "  assign R0_rdata = rdata;" else ""}
+       |${if(delay) "  assign R0_data = rdata;" else ""}
        |${if(delay) "`endif" else ""}
        |""".stripMargin
 
