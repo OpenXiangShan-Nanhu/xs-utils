@@ -24,15 +24,19 @@ class ClockGate extends BlackBox with HasBlackBoxInline {
       |  input  wire CK,
       |  output wire Q
       |);
+      |`ifndef BYPASS_CLOCKGATE
       |`ifndef SYNTHESIS
       |  reg EN;
       |  always_latch begin
       |    if(!CK) EN = TE | E;
       |  end
       |  assign Q = CK & EN;
-      |`else
+      |`else // SYNTHESIS
       |  assign Q = CK;
-      |`endif
+      |`endif // SYNTHESIS
+      |`else // BYPASS_CLOCKGATE
+      |  assign Q = CK;
+      |`endif // BYPASS_CLOCKGATE
       |endmodule
       |
       |""".stripMargin)
