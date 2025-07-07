@@ -39,7 +39,8 @@ class SramArray(
   hasMbist: Boolean,
   sramName: Option[String] = None,
   powerCtl: Boolean,
-  singlePort: Boolean
+  singlePort: Boolean,
+  delayRead:Boolean
 )
   extends RawModule {
   require(width % maskSegments == 0)
@@ -54,7 +55,7 @@ class SramArray(
   @public val R0 = if(!singlePort) Some(IO(new DpRamRIO(width, depth))) else None
   @public val W0 = if(!singlePort) Some(IO(new DpRamWIO(width, maskSegments, depth))) else None
 
-  private val mem = Module(new SramInstGen(singlePort, width, maskSegments, depth))
+  private val mem = Module(new SramInstGen(singlePort, width, maskSegments, depth, delayRead))
   mem.io.RW0.foreach(rw => {
     rw <> RW0.get
     rw.en := RW0.get.en
@@ -150,7 +151,8 @@ object SramProto {
         hasMbist = hasMbist,
         sramName = sramName,
         powerCtl = powerCtl,
-        singlePort = singlePort
+        singlePort = singlePort,
+        delayRead = latency > 1
         ))
     }
     val array = Instance(defMap(sramName.get))

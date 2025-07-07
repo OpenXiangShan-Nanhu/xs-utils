@@ -29,14 +29,14 @@ class DpRamWIO(dw:Int, be:Int, set:Int) extends Bundle {
   val mask = if(be > 1) Some(Input(UInt(be.W))) else None
 }
 
-class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int) extends BlackBox with HasBlackBoxInline {
+class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends BlackBox with HasBlackBoxInline {
   val io = IO(new Bundle{
     val RW0 = if(sp) Some(new SpRamRwIO(dw, be, set)) else None
     val R0 = if(!sp) Some(new DpRamRIO(dw, set)) else None
     val W0 = if(!sp) Some(new DpRamWIO(dw, be, set)) else None
   })
   private val seg = dw / be
-  private val fn = s"${GlobalData.prefix}GENERIC_RAM_${if(sp) 1 else 2}P${set}D${dw}W${be}M"
+  private val fn = s"${GlobalData.prefix}GENERIC_RAM_${if(sp) 1 else 2}P${set}D${dw}W${be}M${if(delay)"D" else ""}"
   override val desiredName = fn
 
   private def genIO:String = {
@@ -85,15 +85,22 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int) extends BlackBox with Has
        |    end
        |  end
        |
-       |  assign R0_data = rdata;
        |  always @ (posedge R0_clk) begin
        |    if(R0_en) rdata <= mem[R0_addr];
-       |  end""".stripMargin
+       |  end
+       |${if(delay) "`if defined(SYNTHESIS) || defined(BYPASS_CLOCKGATE)" else ""}
+       |${if(delay) "  always @ (posedge R0_clk) begin" else ""}
+       |${if(delay) "    rdata_delay <= rdata;" else ""}
+       |${if(delay) "  end" else ""}
+       |${if(delay) "  assign R0_rdata = rdata_delay;" else ""}
+       |${if(delay) "`else" else ""}
+       |${if(delay) "  assign R0_rdata = rdata;" else ""}
+       |${if(delay) "`endif" else ""}
+       |""".stripMargin
 
 
   private def genSpReadWrite:String =
     s"""
-       |  assign RW0_rdata = rdata;
        |  always @ (posedge RW0_clk) begin
        |    if(RW0_en) begin
        |      if(RW0_wmode) begin
@@ -102,7 +109,16 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int) extends BlackBox with Has
        |        rdata <= mem[RW0_addr];
        |      end
        |    end
-       |  end""".stripMargin
+       |  end
+       |${if(delay) "`if defined(SYNTHESIS) || defined(BYPASS_CLOCKGATE)" else ""}
+       |${if(delay) "  always @ (posedge RW0_clk) begin" else ""}
+       |${if(delay) "    rdata_delay <= rdata;" else ""}
+       |${if(delay) "  end" else ""}
+       |${if(delay) "  assign RW0_rdata = rdata_delay;" else ""}
+       |${if(delay) "`else" else ""}
+       |${if(delay) "  assign RW0_rdata = rdata;" else ""}
+       |${if(delay) "`endif" else ""}
+       |""".stripMargin
 
   setInline(fn + ".sv",
     s"""// VCS coverage exclude_file
@@ -112,6 +128,9 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int) extends BlackBox with Has
        |${if(!sp) "  (* rw_addr_collision = \"yes\" *)" else ""}
        |  reg [${dw - 1}:0] mem [${set - 1}:0];
        |  reg [${dw - 1}:0] rdata;
+       |${if(delay) s"`if defined(SYNTHESIS) || defined(BYPASS_CLOCKGATE)" else ""}
+       |${if(delay) s"  reg [${dw - 1}:0] rdata_delay;" else ""}
+       |${if(delay) s"`endif" else ""}
        |${if(sp) genSpReadWrite else genDpReadWrite}
        |endmodule""".stripMargin)
 }
