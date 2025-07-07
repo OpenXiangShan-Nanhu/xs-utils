@@ -88,7 +88,7 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends Bl
        |  always @ (posedge R0_clk) begin
        |    if(R0_en) rdata <= mem[R0_addr];
        |  end
-       |${if(delay) "`if defined(SYNTHESIS) || defined(BYPASS_CLOCKGATE)" else ""}
+       |${if(delay) "`ifdef DELAY_READ" else ""}
        |${if(delay) "  always @ (posedge R0_clk) begin" else ""}
        |${if(delay) "    rdata_delay <= rdata;" else ""}
        |${if(delay) "  end" else ""}
@@ -110,7 +110,7 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends Bl
        |      end
        |    end
        |  end
-       |${if(delay) "`if defined(SYNTHESIS) || defined(BYPASS_CLOCKGATE)" else ""}
+       |${if(delay) "`ifdef DELAY_READ" else ""}
        |${if(delay) "  always @ (posedge RW0_clk) begin" else ""}
        |${if(delay) "    rdata_delay <= rdata;" else ""}
        |${if(delay) "  end" else ""}
@@ -122,15 +122,22 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends Bl
 
   setInline(fn + ".sv",
     s"""// VCS coverage exclude_file
+       |`ifdef SYNTHESIS
+       |  `define DELAY_READ
+       |`elif BYPASS_CLOCKGATE
+       |  `define DELAY_READ
+       |`endif
        |module $fn (
        |$genIO
        |);
        |${if(!sp) "  (* rw_addr_collision = \"yes\" *)" else ""}
        |  reg [${dw - 1}:0] mem [${set - 1}:0];
        |  reg [${dw - 1}:0] rdata;
-       |${if(delay) s"`if defined(SYNTHESIS) || defined(BYPASS_CLOCKGATE)" else ""}
+       |${if(delay) s"`ifdef DELAY_READ" else ""}
        |${if(delay) s"  reg [${dw - 1}:0] rdata_delay;" else ""}
        |${if(delay) s"`endif" else ""}
        |${if(sp) genSpReadWrite else genDpReadWrite}
-       |endmodule""".stripMargin)
+       |endmodule
+       |`undef DELAY_READ
+       |""".stripMargin)
 }
