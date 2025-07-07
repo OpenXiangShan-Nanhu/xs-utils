@@ -138,6 +138,8 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends Bl
        |${if(delay) s"`endif" else ""}
        |${if(sp) genSpReadWrite else genDpReadWrite}
        |endmodule
-       |`undef DELAY_READ
+       |`ifdef DELAY_READ
+       |  `undef DELAY_READ
+       |`endif
        |""".stripMargin)
 }
