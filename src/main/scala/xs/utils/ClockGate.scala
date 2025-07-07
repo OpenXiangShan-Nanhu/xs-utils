@@ -26,7 +26,7 @@ class ClockGate extends BlackBox with HasBlackBoxInline {
       |);
       |`ifdef SYNTHESIS
       |  assign Q = CK;
-      |`elif BYPASS_CLOCKGATE
+      |`elsif BYPASS_CLOCKGATE
       |  assign Q = CK;
       |`else
       |  reg EN;
