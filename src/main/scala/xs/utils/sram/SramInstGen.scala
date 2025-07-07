@@ -124,7 +124,7 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends Bl
     s"""// VCS coverage exclude_file
        |`ifdef SYNTHESIS
        |  `define DELAY_READ
-       |`elif BYPASS_CLOCKGATE
+       |`elsif BYPASS_CLOCKGATE
        |  `define DELAY_READ
        |`endif
        |module $fn (
