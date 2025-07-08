@@ -210,15 +210,12 @@ class SRAMTemplate[T <: Data](
   private val resetAddr = WireInit(0.U(log2Ceil(set + 1).W))
   private val resetWen = WireInit(false.B)
 
-  val extra_reset = if(extraReset) Some(IO(Input(AsyncReset()))) else None
+  val extra_reset = if(extraReset) Some(IO(Input(Bool()))) else None
   if(shouldReset) {
-    val resetGen = Module(new SramResetGen(set, isc))
+    val resetGen = Module(new SramResetGen(set = set, interval = isc, extraReset = extraReset))
     resetGen.clock := clock
-    if(extraReset) {
-      resetGen.reset := (extra_reset.get.asBool | reset.asBool).asAsyncReset
-    } else {
-      resetGen.reset := reset
-    }
+    resetGen.reset := reset
+    resetGen.io.extraRst.foreach(_ := extra_reset.get)
     resetState := resetGen.io.resetState
     resetAddr := resetGen.io.waddr
     resetWen := resetGen.io.wen

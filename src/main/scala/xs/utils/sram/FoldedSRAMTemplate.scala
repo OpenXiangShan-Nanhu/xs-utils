@@ -56,7 +56,7 @@ class FoldedSRAMTemplate[T <: Data](
       suffix = suffix
     )
   )
-  if(array.extra_reset.isDefined) array.extra_reset.get := extra_reset.get.asAsyncReset
+  if(array.extra_reset.isDefined) array.extra_reset.get := extra_reset.get
   if(powerCtl) array.io.pwctl.get := io.pwctl.get
 
   io.r.req.ready := array.io.r.req.ready
