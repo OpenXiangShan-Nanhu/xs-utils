@@ -18,6 +18,7 @@ class ClockGate extends BlackBox with HasBlackBoxInline {
   override val desiredName = modName
   setInline(s"$modName.sv",
     s"""
+      |// VCS coverage exclude_file
       |module $modName (
       |  input  wire TE,
       |  input  wire E,
