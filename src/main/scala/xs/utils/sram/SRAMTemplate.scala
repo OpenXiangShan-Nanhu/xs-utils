@@ -288,7 +288,7 @@ class SRAMTemplate[T <: Data](
     respReg := Cat(false.B, respReg) >> 1.U
   }
 
-  private val ramRdata = SramProto.read(array, singlePort, ramRaddr, renStretched)
+  private val ramRdata = SramProto.read(array, singlePort, ramRaddr, renStretched && !brcBd.ram_hold)
   when(wenStretched && !brcBd.ram_hold) {
     SramProto.write(array, singlePort, ramWaddr, ramWdata, ramWmask)
   }
