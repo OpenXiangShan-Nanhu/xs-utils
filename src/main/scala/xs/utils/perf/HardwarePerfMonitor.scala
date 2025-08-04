@@ -20,8 +20,17 @@ import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import chisel3.util._
 
-class PerfEvent extends Bundle {
+class PerfEvent() extends Bundle {
   val value = UInt(6.W)
+  val id    = UInt(10.W)
+}
+object PerfEvent {
+  def apply(value: UInt, id: UInt): PerfEvent = {
+    val pe = Wire(new PerfEvent)
+    pe.value := value
+    pe.id    := id
+    pe
+  }
 }
 
 trait HasPerfEvents { this: RawModule =>
@@ -29,6 +38,7 @@ trait HasPerfEvents { this: RawModule =>
 
   lazy val io_perf: Vec[PerfEvent] = IO(Output(Vec(perfEvents.length, new PerfEvent)))
   def generatePerfEvent(noRegNext: Option[Seq[Int]] = None): Unit = {
+    io_perf := DontCare
     for (((out, (name, counter)), i) <- io_perf.zip(perfEvents).zipWithIndex) {
       require(!name.contains("/"))
       out.value := RegNext(RegNext(counter))
@@ -49,10 +59,11 @@ class HPerfCounter(val numPCnt: Int)(implicit p: Parameters) extends Module with
     val events_sets = Input(Vec(numPCnt, new PerfEvent))
   })
 
-  val events_incr_0 = RegNext(io.events_sets(io.hpm_event( 9,  0)))
-  val events_incr_1 = RegNext(io.events_sets(io.hpm_event(19, 10)))
-  val events_incr_2 = RegNext(io.events_sets(io.hpm_event(29, 20)))
-  val events_incr_3 = RegNext(io.events_sets(io.hpm_event(39, 30)))
+  val eventsMap = io.events_sets.map(event => (event.id, event.value))
+  val events_incr_0 = RegNext(MuxLookup(io.hpm_event( 9,  0), 0.U)(eventsMap))
+  val events_incr_1 = RegNext(MuxLookup(io.hpm_event(19, 10), 0.U)(eventsMap))
+  val events_incr_2 = RegNext(MuxLookup(io.hpm_event(29, 20), 0.U)(eventsMap))
+  val events_incr_3 = RegNext(MuxLookup(io.hpm_event(39, 30), 0.U)(eventsMap))
 
   val event_op_0 = RegNext(io.hpm_event(44, 40))
   val event_op_1 = RegNext(io.hpm_event(49, 45))
@@ -64,8 +75,8 @@ class HPerfCounter(val numPCnt: Int)(implicit p: Parameters) extends Module with
     Mux(optype(2), cnt_1 + cnt_2,
                    cnt_1 | cnt_2)))
 
-  val event_step_0 = combineEvents(events_incr_0.value, events_incr_1.value, event_op_0)
-  val event_step_1 = combineEvents(events_incr_2.value, events_incr_3.value, event_op_1)
+  val event_step_0 = combineEvents(events_incr_0, events_incr_1, event_op_0)
+  val event_step_1 = combineEvents(events_incr_2, events_incr_3, event_op_1)
 
   // add registers to optimize the timing (like pipelines)
   val event_op_2_reg = RegNext(event_op_2)
