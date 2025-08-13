@@ -58,7 +58,7 @@ object ClockGate {
       cg
     }
     val clockGate = Module(new ClockGate)
-    clockGate.io.E := E
+    clockGate.io.E := E || withClock(CK){ RegNext(E, true.B) }
     clockGate.io.TE := cgbd.te
     clockGate.io.CK := CK
     clockGate.io.Q
