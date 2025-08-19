@@ -58,6 +58,9 @@ case class MemBackTypeMMField() extends BundleField[Bool](MemBackTypeMM, Output(
 case object MemPageTypeNC extends ControlKey[Bool]("memPageType_NC")
 case class MemPageTypeNCField() extends BundleField[Bool](MemPageTypeNC, Output(Bool()), _ := false.B)
 
+case object DeviceType extends ControlKey[Bool]("deviceType")
+case class DeviceTypeField() extends BundleField[Bool](DeviceType, Output(Bool()), _ := false.B)
+
 case class L2Param(
   name: String = "L2",
   ways: Int = 4,
