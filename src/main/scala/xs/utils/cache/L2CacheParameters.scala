@@ -52,12 +52,6 @@ case class L1Param
 }
 
 // Pass PMA and uncached memory attribute from PBMT to MMIOBridge
-case object MemBackTypeMM extends ControlKey[Bool]("memBackType_MM")
-case class MemBackTypeMMField() extends BundleField[Bool](MemBackTypeMM, Output(Bool()), _ := false.B)
-
-case object MemPageTypeNC extends ControlKey[Bool]("memPageType_NC")
-case class MemPageTypeNCField() extends BundleField[Bool](MemPageTypeNC, Output(Bool()), _ := false.B)
-
 case object DeviceType extends ControlKey[Bool]("deviceType")
 case class DeviceTypeField() extends BundleField[Bool](DeviceType, Output(Bool()), _ := false.B)
 
