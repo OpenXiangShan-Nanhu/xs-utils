@@ -30,7 +30,7 @@ class SramQueueV2[T <: Data](gen:T, size:Int, hasMbist:Boolean, suffix:String = 
     moduleName = Some("SramQueueSram")
   ))
   private val full = enqPtr.flag =/= deqPtr.flag && enqPtr.value === deqPtr.value
-  private val empty = enqPtr === enqPtr
+  private val empty = enqPtr === deqPtr
   private val ramOutVld = RegInit(false.B)
   private val readPipeEn = !ramOutVld || oq.io.enq.ready
 
