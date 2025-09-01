@@ -29,8 +29,6 @@ class BaseVipArbiter[T <: Data](gen: T, size:Int) extends BaseArbiter(gen, size)
 class VipArbiter[T <: Data](gen: T, size:Int) extends BaseVipArbiter(gen, size) {
   private val highMaskVec = Wire(Vec(size, Bool()))
   private val lowMaskVec = Wire(Vec(size, Bool()))
-  dontTouch(highMaskVec)
-  dontTouch(lowMaskVec)
   private val highMask = highMaskVec.asUInt
   private val lowMask = lowMaskVec.asUInt
   for(idx <- 0 until size) {
