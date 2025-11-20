@@ -19,5 +19,6 @@ case class DebugOptions
   EnableConstantin: Boolean = false,
   AlwaysBasicDB: Boolean = false,
   EnableRollingDB: Boolean = false,
-  EnableHWMoniter: Boolean = true
+  EnableHWMoniter: Boolean = true,
+  EnableMemBlockDebugInfo: Boolean = true
 )
