@@ -8,6 +8,7 @@ task("rtl", function()
     options = {
       {'b', "build-dir", "kv", "build", "build directory"},
       {'M', "main-function", "kv", "PriorityEncoderHigh", "main class"},
+      {'t', "target", "kv", "systemverilog", "output targer format"},
     }
   }
   
@@ -17,7 +18,7 @@ task("rtl", function()
     local build_dir = option.get("build-dir")
     local rtl_dir = path.join(build_dir, "rtl")
     local chisel_opts = {"-i", "test.runMain", "xs.utils.test." .. main .. "Top"}
-    table.join2(chisel_opts, {"--throw-on-first-error", "--target", "systemverilog", "--split-verilog", "--full-stacktrace", "-td", rtl_dir})
+    table.join2(chisel_opts, {"--throw-on-first-error", "--target", option.get("target"), "--split-verilog", "--full-stacktrace", "-td", rtl_dir})
 
     if os.exists(rtl_dir) then os.rmdir(rtl_dir) end
 
@@ -39,6 +40,19 @@ task("init", function()
     os.exec("git submodule update --init")
   end)
   set_menu {}
+end)
+
+task("idea", function()
+  on_run(function()
+    if os.host() == "windows" then
+      os.execv(os.shell(), { "mill", "-i", "mill.idea.GenIdea/idea" })
+    else
+      os.execv("mill", { "-i", "mill.idea.GenIdea/idea" })
+    end
+  end)
+  set_menu {
+    options = {}
+  }
 end)
 
 task("comp", function()
