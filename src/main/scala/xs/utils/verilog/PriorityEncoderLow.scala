@@ -36,7 +36,7 @@ object PriorityEncoderLow {
 
   def apply(ins: Seq[Bool]):Seq[Bool] = {
     val enc = Module(new PriorityEncoderLow(ins.size))
-    enc.io.i_data := Cat(ins)
+    enc.io.i_data := Cat(ins.reverse)
     enc.io.o_code.asBools
   }
 
