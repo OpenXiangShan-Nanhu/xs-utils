@@ -1,0 +1,68 @@
+package build
+import mill.*
+import scalalib.*
+
+def defaultScalaVersion = "2.13.16"
+def chiselVersion = "6.7.0"
+def firtoolVersion = "1.62.1"
+def depVersion = Map(
+  "scalatest"      -> mvn"org.scalatest::scalatest:3.2.7",
+  "chisel"         -> mvn"org.chipsalliance::chisel:$chiselVersion",
+  "chisel-plugin"  -> mvn"org.chipsalliance:::chisel-plugin:$chiselVersion",
+  "llvm-firtool"   -> mvn"org.chipsalliance:llvm-firtool:$firtoolVersion",
+  "json4s-jackson" -> mvn"org.json4s::json4s-jackson:4.0.7",
+  "mainargs"       -> mvn"com.lihaoyi::mainargs:0.5.0",
+  "sourcecode"     -> mvn"com.lihaoyi::sourcecode:0.4.4"
+)
+
+trait CommonModule extends ScalaModule {
+  override def scalaVersion = defaultScalaVersion
+  override def scalacPluginMvnDeps = Seq(depVersion("chisel-plugin"))
+  override def scalacOptions = super.scalacOptions() ++
+    Seq("-language:reflectiveCalls", "-Ymacro-annotations", "-Ytasty-reader")
+  override def mvnDeps = super.mvnDeps() ++ Seq(
+    depVersion("chisel"),
+    depVersion("llvm-firtool")
+  )
+}
+
+object `package` extends SbtModule with CommonModule {
+  override def moduleDeps = Seq(`rocket-chip`)
+  object test extends SbtTests  {
+    override def mvnDeps = super.mvnDeps() ++ Seq(depVersion("scalatest"))
+    def testFramework = "org.scalatest.tools.Framework"
+  }
+
+  object `rocket-chip` extends CommonModule {
+    override def moduleDeps = Seq(
+      dependencies.hardfloat.hardfloat, 
+      dependencies.cde.cde, 
+      dependencies.diplomacy.diplomacy, 
+      macros
+    )
+    override def mvnDeps = super.mvnDeps() ++ Seq(
+      depVersion("json4s-jackson"),
+      depVersion("mainargs")
+    )
+    
+    object macros extends CommonModule
+    
+    object dependencies extends CommonModule {
+
+      object hardfloat extends CommonModule {
+        object hardfloat extends CommonModule
+      }
+
+      object cde extends CommonModule {
+        object cde extends CommonModule
+      }
+
+      object diplomacy extends CommonModule {
+        object diplomacy extends CommonModule {
+          override def moduleDeps = super.moduleDeps ++ Seq(cde.cde)
+          override def mvnDeps = super.mvnDeps() ++ Seq(depVersion("sourcecode"))
+        }
+      }
+    }
+  }
+}

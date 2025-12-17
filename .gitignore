@@ -6,3 +6,4 @@ build
 *.icl
 *.pdl
 *.gz
+.metals

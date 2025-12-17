@@ -2,6 +2,7 @@ package xs.utils.arb
 
 import chisel3._
 import chisel3.util._
+import xs.utils.verilog.PriorityEncoderOneHotLow
 
 class BaseVipArbiter[T <: Data](gen: T, size:Int) extends BaseArbiter(gen, size) {
   val valids = VecInit(io.in.map(_.valid))
@@ -47,8 +48,8 @@ class VipArbiter[T <: Data](gen: T, size:Int) extends BaseVipArbiter(gen, size) 
 
   private val highValidMask = highMask & validMask
   private val lowValidMask = lowMask & validMask
-  private val highPtrNext = PriorityEncoderOH(highValidMask)
-  private val lowPtrNext = PriorityEncoderOH(lowValidMask)
+  private val highPtrNext = PriorityEncoderOneHotLow(highValidMask)
+  private val lowPtrNext = PriorityEncoderOneHotLow(lowValidMask)
 
   vipPtrNext := Mux(highValidMask.orR, highPtrNext, lowPtrNext)
   when(vipPtrMove) {
