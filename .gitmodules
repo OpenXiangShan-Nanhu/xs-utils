@@ -10,3 +10,6 @@
 [submodule "dep/diplomacy"]
 	path = dep/diplomacy
 	url = https://github.com/chipsalliance/diplomacy.git
+[submodule "dep/chisel"]
+	path = dep/chisel
+	url = https://github.com/OpenXiangShan-Nanhu/chisel.git

@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 import chisel3.util.experimental.BoringUtils
 import xs.utils.{FileRegisters, ResetRRArbiter}
-import chisel3.experimental.{SourceInfo, SourceLine}
+import chisel3.experimental.{SourceInfo, SourceLine, SpecialWireInit}
 import org.chipsalliance.cde.config.{Field, Parameters}
 
 import scala.collection.mutable
@@ -105,6 +105,7 @@ object HardwareAssertion {
       val thisCond = IO(new HAssertBundle(None))
       thisCond.cond.get := !assertCond
       thisCond.suggestName(s"hwa_$pcode")
+      SpecialWireInit(s, thisCond.cond.get, 0, prepend = true)
       val node = HAssertNode(thisCond, Seq((0, pdesc)), 0)
       nodeSeq = nodeSeq :+ node
     }
