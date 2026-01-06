@@ -27,42 +27,43 @@ trait CommonModule extends ScalaModule {
 }
 
 object `package` extends SbtModule with CommonModule {
-  override def moduleDeps = Seq(`rocket-chip`)
+  override def moduleDeps = Seq(dep.`rocket-chip`)
   object test extends SbtTests  {
     override def mvnDeps = super.mvnDeps() ++ Seq(depVersion("scalatest"))
     def testFramework = "org.scalatest.tools.Framework"
   }
 
-  object `rocket-chip` extends CommonModule {
-    override def moduleDeps = Seq(
-      dependencies.hardfloat.hardfloat, 
-      dependencies.cde.cde, 
-      dependencies.diplomacy.diplomacy, 
-      macros
-    )
-    override def mvnDeps = super.mvnDeps() ++ Seq(
-      depVersion("json4s-jackson"),
-      depVersion("mainargs")
-    )
-    
-    object macros extends CommonModule
-    
-    object dependencies extends CommonModule {
+  object dep extends CommonModule {
+    object hardfloat extends CommonModule {
+      object hardfloat extends CommonModule
+    }
 
-      object hardfloat extends CommonModule {
-        object hardfloat extends CommonModule
-      }
+    object cde extends CommonModule {
+      object cde extends CommonModule
+    }
 
-      object cde extends CommonModule {
-        object cde extends CommonModule
-      }
-
+    object diplomacy extends CommonModule {
       object diplomacy extends CommonModule {
-        object diplomacy extends CommonModule {
-          override def moduleDeps = super.moduleDeps ++ Seq(cde.cde)
-          override def mvnDeps = super.mvnDeps() ++ Seq(depVersion("sourcecode"))
-        }
+        override def moduleDeps = super.moduleDeps ++ Seq(cde.cde)
+
+        override def mvnDeps = super.mvnDeps() ++ Seq(depVersion("sourcecode"))
       }
+    }
+
+    object `rocket-chip` extends CommonModule {
+      override def moduleDeps = Seq(
+        hardfloat.hardfloat,
+        cde.cde,
+        diplomacy.diplomacy,
+        macros
+      )
+
+      override def mvnDeps = super.mvnDeps() ++ Seq(
+        depVersion("json4s-jackson"),
+        depVersion("mainargs")
+      )
+
+      object macros extends CommonModule
     }
   }
 }

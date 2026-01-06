@@ -37,8 +37,6 @@ task("init", function()
   on_run(function()
     os.cd(os.scriptdir())
     os.exec("git submodule update --init")
-    os.cd("rocket-chip")
-    os.exec("git submodule update --init")
   end)
   set_menu {}
 end)
