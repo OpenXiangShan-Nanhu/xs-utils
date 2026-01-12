@@ -37,7 +37,7 @@ object RegNextWithEnable {
 
 class CircularShift(data: UInt) {
   private def helper(step: Int, isLeft: Boolean): UInt = {
-    if (step == 0) {
+    if ((step % data.getWidth) == 0) {
       data
     }
     else {
