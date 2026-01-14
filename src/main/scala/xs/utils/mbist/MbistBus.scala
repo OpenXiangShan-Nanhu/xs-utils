@@ -33,7 +33,8 @@ case class MbistBusParams(
   dataWidth:   Int,
   maskWidth:   Int,
   hasDualPort: Boolean,
-  domainName:  String = "Unknown") {
+  domainName:  String = "Unknown"
+) {
   val arrayWidth = log2Up(array + 1)
   val addrWidth = log2Up(set + 1)
 }
@@ -67,7 +68,8 @@ case class Ram2MbistParams(
   sramInst:   String = "",
   pipeDepth:  Int = 0,
   bankRange:  String = "None",
-  holder:     RawModule = null) {
+  holder:     () => String = () => "Unknown"
+) {
   val dataWidth = sramParams.mbistDataWidth
   val maskWidth = sramParams.mbistMaskWidth
   val maxArrayId = sramParams.mbistArrayIds.max

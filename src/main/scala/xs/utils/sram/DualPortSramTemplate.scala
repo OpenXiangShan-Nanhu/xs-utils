@@ -54,7 +54,7 @@ class DualPortSramTemplate[T <: Data](
   ))
 
   private val pipeline = if(isc > 1) 1 else 0
-  private val mbp = Ram2MbistParams(sp, set, singlePort = true, ram.sramName, "", foundry, sramInst, pipeline, "None", this)
+  private val mbp = Ram2MbistParams(sp, set, singlePort = true, ram.sramName, "", foundry, sramInst, pipeline, "None", () => this.pathName)
   val io = IO(new Bundle{
     val wreq = Flipped(Decoupled(new DpSramWrite(gen, set, way)))
     val rreq = Flipped(Decoupled(UInt(log2Ceil(set).W)))

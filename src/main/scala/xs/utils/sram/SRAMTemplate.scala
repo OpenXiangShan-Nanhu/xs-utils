@@ -200,7 +200,7 @@ class SRAMTemplate[T <: Data](
     foundry = foundry,
     sramInst = sramInst,
     pipeDepth = pipeDepth,
-    template = this
+    holder = () => this.pathName
   )
   private val brcBd = io.broadcast.getOrElse(mbistBd.broadcast)
   val sramName: String = vname

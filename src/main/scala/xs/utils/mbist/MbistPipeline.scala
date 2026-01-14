@@ -132,10 +132,11 @@ object MbistPipeline {
   def PlaceMbistPipeline(
     level: Int,
     moduleName: String = s"MbistPipeline_${uniqueId}",
-    place: Boolean = true
+    place: Boolean = true,
+    instance: Boolean = false // Use this to export mbist ports of instance when using definition-instance module
   ): Option[MbistPipeline] = {
     if(place) {
-      val thisNode = Mbist.addController(level)
+      val thisNode = Mbist.addController(level, instance, moduleName)
       uniqueId += 1
       val pipelineNodes =
         thisNode.children.filter(_.isInstanceOf[PipelineBaseNode]).map(_.asInstanceOf[PipelineBaseNode])
@@ -211,9 +212,12 @@ class MbistPipeline(level: Int, moduleName: String = s"MbistPipeline_${uniqueId}
   val nodeParams = myNode.bd.params
   val childrenIds = myNode.children.flatMap(_.array_id)
 
-  private val pipelineNodes =
-    myNode.children.filter(_.isInstanceOf[PipelineBaseNode]).map(_.asInstanceOf[PipelineBaseNode])
-  private val ramNodes = myNode.children.filter(_.isInstanceOf[RamBaseNode]).map(_.asInstanceOf[RamBaseNode])
+  private val pipelineNodes = myNode.children
+    .filter(_.isInstanceOf[PipelineBaseNode])
+    .map(_.asInstanceOf[PipelineBaseNode])
+  private val ramNodes = myNode.children
+    .filter(_.isInstanceOf[RamBaseNode])
+    .map(_.asInstanceOf[RamBaseNode])
 
   val mbist = IO(new MbistBus(myNode.bd.params))
   val toNextPipeline = pipelineNodes.map(_.bd.params).map(new MbistBus(_)).map(b => IO(Flipped(b)))
@@ -282,7 +286,8 @@ class MbistPipeline(level: Int, moduleName: String = s"MbistPipeline_${uniqueId}
       case ((child, bd), dout) =>
         val selected = child.array_id.map(_.U === arrayReg).reduce(_ || _)
         val doSpread = selected || allReg
-        bd.array := Mux(doSpread, arrayReg(child.bd.params.arrayWidth - 1, 0), 0.U)
+        val array = arrayReg - child.offset.U
+        bd.array := Mux(doSpread, array(child.bd.params.arrayWidth - 1, 0), 0.U)
         bd.req := reqReg
         bd.all := Mux(doSpread, allReg, 0.U)
         bd.writeen := Mux(doSpread, wenReg, 0.U)

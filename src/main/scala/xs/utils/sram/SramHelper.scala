@@ -38,7 +38,6 @@ case class SramInfo (
   val sramSegBits = sramDataBits / sramMaskBits
   if(bist) {
     val addId = if(isNto1) mbistNodeNumNto1 else mbistNodeNum1toN
-    increaseNodeID(addId)
     increaseDomainID(addId)
   }
   def mbistMaskConverse(wmask:UInt, nodeSelectOH:UInt):UInt = {
@@ -63,7 +62,6 @@ case class SramInfo (
 }
 
 object SramHelper {
-  private var nodeId = 0
   private var wrapperId = 0
   private var domainId = 0
   val sramCtrlQueue = new mutable.Queue[SramCtrlBundle]
@@ -99,8 +97,6 @@ object SramHelper {
   def getDomainID: Int = domainId
 
   def increaseDomainID(add: Int): Unit = domainId += add
-
-  def increaseNodeID(add: Int): Unit = nodeId += add
 
   def genBroadCastBundleTop(): SramBroadcastBundle = {
     val res = Wire(new SramBroadcastBundle)
@@ -176,9 +172,8 @@ object SramHelper {
     foundry: String,
     sramInst: String,
     pipeDepth:  Int = 0,
-    template: RawModule
+    holder: () => String,
   ): (Ram2Mbist, Instance[SramArray], String) = {
-
 
     val (array, vname) = SramProto(rclk, !dp, set, sp.sramDataBits, sp.sramMaskBits, setup, hold, latency, wclk, bist || broadcast.isDefined, suffix, pwctl.isDefined)
     val bdParam = Ram2MbistParams(
@@ -191,7 +186,7 @@ object SramHelper {
       sramInst,
       pipeDepth,
       "None",
-      template
+      holder
     )
     val isc = if(hold > 0) setup + 1 else setup
     val mbist = genMbistBoreSink(bdParam, bist, extraHold)
