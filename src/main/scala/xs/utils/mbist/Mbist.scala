@@ -18,7 +18,9 @@
 package xs.utils.mbist
 
 import chisel3._
+import chisel3.experimental.hierarchy.{IsLookupable, Lookupable}
 import chisel3.util.experimental.BoringUtils
+import xs.utils.sram.SramHelper
 
 object Mbist {
   val maxMbistDataWidth = 256
@@ -46,8 +48,10 @@ object Mbist {
     val bd:          MbistBus,
     val level:       Int,
     val array_id:    Seq[Int],
-    val array_depth: Seq[Int])
-      extends BaseNode {
+    val array_depth: Seq[Int],
+    val offset:      Int,
+    val name:        String
+  ) extends BaseNode with IsLookupable {
     var children:              Seq[BaseNode] = Seq()
     var ramParamsBelongToThis: Seq[Ram2MbistParams] = Seq()
     require(level > 0)
@@ -55,8 +59,8 @@ object Mbist {
 
   sealed class SramNode(bd: Ram2Mbist, ids: Seq[Int], een: Boolean) extends RamBaseNode(bd, ids, een)
 
-  sealed class PipelineNodeSram(bd: MbistBus, level: Int, array_id: Seq[Int], array_depth: Seq[Int])
-      extends PipelineBaseNode(bd, level, array_id, array_depth)
+  sealed class PipelineNodeSram(bd: MbistBus, level: Int, array_id: Seq[Int], array_depth: Seq[Int], offset:Int, name:String)
+      extends PipelineBaseNode(bd, level, array_id, array_depth, offset, name)
 
   def inferMbistBusParamsFromParams(children: Seq[MbistBusParams]): MbistBusParams =
     MbistBusParams(
@@ -70,19 +74,19 @@ object Mbist {
   def inferMbistBusParams(children: Seq[BaseNode]): MbistBusParams =
     MbistBusParams(
       children.map(_.array_id).reduce(_ ++ _).max,
-      children.map {
+      children.map({
         case ram: RamBaseNode      => ram.bd.params.set
         case pl:  PipelineBaseNode => pl.bd.params.set
-      }.max,
-      (children.map {
+      }).max,
+      children.map({
         case ram: RamBaseNode      => ram.bd.params.dataWidth
         case pl:  PipelineBaseNode => pl.bd.params.dataWidth
       }).max,
-      (children.map {
+      children.map({
         case ram: RamBaseNode      => ram.bd.params.maskWidth
         case pl:  PipelineBaseNode => pl.bd.params.maskWidth
       }).max,
-      (children.map {
+      children.map({
         case ram: RamBaseNode      => !ram.bd.params.singlePort
         case pl:  PipelineBaseNode => pl.bd.params.hasDualPort
       }).reduce(_ || _)
@@ -96,7 +100,24 @@ object Mbist {
 
   def isMaxLevel(level: Int) = level == Int.MaxValue
 
-  def addController(level: Int): PipelineBaseNode = {
+  def addInstance(bus: MbistBus, node:PipelineBaseNode, mod:RawModule, instName:String):Unit = {
+    require(SramHelper.getDomainID >= node.array_id.min)
+    val offset = SramHelper.getDomainID - node.array_id.min
+    val ids = node.array_id.map(_ + offset)
+    val newNode = new PipelineNodeSram(bus, node.level, ids, node.array_depth, offset, s"${node.name}_ext")
+    newNode.ramParamsBelongToThis = for(i <- node.ramParamsBelongToThis.indices) yield {
+      val src = node.ramParamsBelongToThis(i)
+      val holderStr = src.holder()
+      src.copy(
+        holder = () => s"${mod.pathName}.$instName.$holderStr"
+      )
+    }
+    val add = node.array_id.max + 1 - node.array_id.min
+    SramHelper.increaseDomainID(add)
+    globalNodes = globalNodes :+ newNode
+  }
+
+  def addController(level: Int, instance:Boolean, name:String): PipelineBaseNode = {
     require(globalNodes.nonEmpty, "No nodes were created before implementing mbist controller!")
     val candidateNodes = globalNodes.filter(inst => inst.isInstanceOf[SramNode] || inst.isInstanceOf[PipelineNodeSram])
     val children = candidateNodes.filter(_.level < level)
@@ -108,12 +129,10 @@ object Mbist {
     dontTouch(bd)
     val ids = children.flatMap(_.array_id)
     val depth = children.flatMap(_.array_depth.map(_ + 1))
-    val node = new PipelineNodeSram(bd, level, ids, depth)
+    val node = new PipelineNodeSram(bd, level, ids, depth, 0, name)
     node.children = children.map {
       case ram: RamBaseNode =>
         val mbist = Wire(ram.bd.cloneType)
-        mbist := DontCare
-        dontTouch(mbist)
         val _mbist = BoringUtils.bore(ram.bd)
         _mbist.addr := mbist.addr
         _mbist.addr_rd := mbist.addr_rd
@@ -129,8 +148,6 @@ object Mbist {
         new SramNode(mbist, ram.array_id, ram.een)
       case pl: PipelineBaseNode =>
         val mbist = Wire(pl.bd.cloneType)
-        mbist := DontCare
-        dontTouch(mbist)
         val _mbist = BoringUtils.bore(pl.bd)
         _mbist.array := mbist.array
         _mbist.all := mbist.all
@@ -144,7 +161,7 @@ object Mbist {
         _mbist.broadcast := mbist.broadcast
         mbist.ack := _mbist.ack
         mbist.outdata := _mbist.outdata
-        new PipelineNodeSram(mbist, pl.level, pl.array_id, pl.array_depth)
+        new PipelineNodeSram(mbist, pl.level, pl.array_id, pl.array_depth, pl.offset, pl.name)
     }
     node.ramParamsBelongToThis = children.flatMap({
       case ram: RamBaseNode =>
@@ -152,7 +169,13 @@ object Mbist {
       case pl: PipelineBaseNode =>
         pl.ramParamsBelongToThis
     })
-    globalNodes = remain :+ node
+    if(instance) {
+      val dec = node.array_id.max + 1 - node.array_id.min
+      SramHelper.increaseDomainID(-dec)
+      globalNodes = remain
+    } else {
+      globalNodes = remain :+ node
+    }
 
     node
   }

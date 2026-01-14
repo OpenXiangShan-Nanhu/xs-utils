@@ -24,12 +24,14 @@ class MbistCsvGen(val intf: InterfaceInfo, val pip: MbistPipeline, val csvName: 
     }
 
     val node = pip.myNode
+    val pnames = node.ramParamsBelongToThis.map(_.holder()).map(removeSubstring)
     node.ramParamsBelongToThis
       .zip(node.array_id)
       .zip(node.array_depth)
+      .zip(pnames)
       .foreach({
-        case ((p, id), depth) =>
-          contents += removeSubstring(p.holder.pathName) + p.nodeSuffix + ","
+        case (((p, id), depth), pname) =>
+          contents += pname + p.nodeSuffix + ","
           contents += GlobalData.prefix + p.vname + ".sv,"
           contents += id.toString + ","
           contents += (depth * 2 + p.pipeDepth).toString + ","
