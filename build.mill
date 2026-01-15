@@ -4,8 +4,8 @@ import scalalib.*
 
 object v {
   val defaultScalaVersion = "2.13.18"
-  val firtoolVersion = "1.138.0"
-  val chiselVersion = "7.6.0"
+  val firtoolVersion = "1.139.0"
+  val chiselVersion = "7.7.0"
 
   val scalatest = mvn"org.scalatest::scalatest:3.2.19"
   val scalacheck = mvn"org.scalatestplus::scalacheck-1-18:3.2.19.0"
