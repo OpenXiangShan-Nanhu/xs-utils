@@ -1,10 +1,11 @@
 package xs.utils.debug
 
 import chisel3._
+import chisel3.experimental.hierarchy.IsLookupable
 import chisel3.util._
 import chisel3.util.experimental.BoringUtils
 import xs.utils.{FileRegisters, ResetRRArbiter}
-import chisel3.experimental.{SourceInfo, SourceLine, SpecialWireInit}
+import chisel3.experimental.{CheckBoring, EscapedWire, SourceInfo, SourceLine, SpecialWireInit, noPrefix}
 import org.chipsalliance.cde.config.{Field, Parameters}
 
 import scala.collection.mutable
@@ -18,16 +19,22 @@ case class HwaParams(
   hwaDevDepth: Int = 2048
 )
 
-class HAssertBundle(width: Option[Int]) extends Bundle {
-  val cond = Option.when(width.isEmpty)(Output(Bool()))
-  val bus = width.map(w => Decoupled(UInt(w.W)))
+class HAssertBundle(val node: HAssertNode)(implicit p:Parameters) extends Bundle {
+  val hwaP = p(HardwareAssertionKey)
+  val cond = Option.when(node.point)(Output(Bool()))
+  val bus = Option.when(!node.point)(Decoupled(UInt(hwaP.maxInfoBits.W)))
 }
 
 case class HAssertNode(
-  hassert: HAssertBundle,
-  desc: Seq[(Int, String)],
-  level: Int
-)
+  desc: Seq[(Int, String)] = Seq(),
+  level: Int = 0,
+  point: Boolean = false,
+  name: String = ""
+) extends IsLookupable
+
+class HAssertHub(level:Int)(implicit p:Parameters) extends Module {
+  HardwareAssertion.placePipe(level)
+}
 
 object HAssert {
   def apply(cond:Bool, desc:Printable)(implicit p: Parameters, s: SourceInfo):Unit = HardwareAssertion(cond, desc)(p, s)
@@ -36,13 +43,21 @@ object HAssert {
   def withEn(cond: Bool, en: Bool)(implicit p: Parameters, s: SourceInfo): Unit = HardwareAssertion.withEn(cond, en)(p ,s)
   def checkTimeout(clear: Bool, timeout: Int, desc: Printable)(implicit p: Parameters, s: SourceInfo): Unit = HardwareAssertion.checkTimeout(clear, timeout, desc)(p, s)
   def checkTimeout(clear: Bool, timeout: Int)(implicit p: Parameters, s: SourceInfo): Unit = HardwareAssertion.checkTimeout(clear, timeout)(p, s)
-  def placePipe(level: Int, moduleTop: Boolean = false)(implicit p: Parameters): Option[Seq[HAssertNode]] = HardwareAssertion.placePipe(level, moduleTop)
-  def release(node: Option[HAssertNode], dir: String, pfx: String = "")(implicit p: Parameters): Unit = HardwareAssertion.release(node, dir, pfx)
+  def placePipe(level: Int, moduleTop: Boolean = false, name:String = "")(implicit p: Parameters): Option[Seq[HAssertBundle]] = HardwareAssertion.placePipe(level, moduleTop, name)
+  def release(node: Option[Seq[HAssertBundle]], dir: String, pfx: String = "")(implicit p: Parameters): Unit = HardwareAssertion.release(node, dir, pfx)
+  def fromIO(buses:Option[MixedVec[HAssertBundle]])(implicit p: Parameters):Unit = HardwareAssertion.fromIO(buses)
+  def exportIO(implicit p: Parameters): Option[MixedVec[HAssertBundle]] = HardwareAssertion.exportIO
+
+  def placePipeHub(level: Int)(implicit p: Parameters): Unit = noPrefix {
+    if(p(HardwareAssertionKey).enable && HardwareAssertion.getHwaSeq.count(_.node.level < level) != 0) noPrefix {
+      val hwa_hub = Module(new HAssertHub(level))
+    }
+  }
 }
 
 object HardwareAssertion {
-  private var gid = 0
-  private var nodeSeq = Seq[HAssertNode]()
+  var gid = 0
+  private var hwaSeq = Seq[HAssertBundle]()
 
   private val hashToCountMap = mutable.Map[String, Int]()
 
@@ -54,20 +69,31 @@ object HardwareAssertion {
     }
   }
 
-  private def squashPoints(pts: Seq[HAssertNode])(implicit p: Parameters): Seq[HAssertNode] = {
+  def getHwaSeq: Seq[HAssertBundle] = hwaSeq
+
+  private def squashPoints(pts: Seq[HAssertBundle])(implicit p: Parameters): Seq[HAssertBundle] = {
     val hwaP = p(HardwareAssertionKey)
-    pts.groupBy(_.desc.head._2).map({case(desc, ns) =>
+    pts.foreach(pp => require(pp.node.level == 0))
+    pts.groupBy(_.node.desc.head._2).map({case(desc, ns) =>
       val asrtCnt = RegInit(hwaP.maxAssertRepeatNum.U(log2Ceil(hwaP.maxAssertRepeatNum + 1).W))
-      val asrtVlds = ns.map(n => RegNext(BoringUtils.bore(n.hassert.cond.get), false.B))
-      val squashCond = Wire(new HAssertBundle(Some(hwaP.maxInfoBits)))
+      val asrtVlds = ns.map(n => {
+        val bore = BoringUtils.bore(n)
+        if(n.node.point) {
+          RegNext(bore.cond.get, false.B)
+        } else {
+          bore.bus.get.ready := true.B
+          RegNext(bore.bus.get.valid, false.B)
+        }
+      })
+      val newNode = HAssertNode(desc = Seq((gid, desc)), name = ns.head.node.name)
+      val squashCond = Wire(new HAssertBundle(newNode))
       squashCond.bus.get.valid := Cat(asrtVlds).orR && asrtCnt.orR
       squashCond.bus.get.bits := gid.U
       when(squashCond.bus.get.fire) {
         asrtCnt := asrtCnt - 1.U
       }
-      val res = HAssertNode(squashCond, Seq((gid, desc)), 0)
       gid = gid + 1
-      res
+      squashCond
     }).toSeq
   }
 
@@ -96,18 +122,19 @@ object HardwareAssertion {
     val hwaP = p(HardwareAssertionKey)
     if(hwaP.enable) {
       val pdesc = extractStr(descStr)
+      val pdescShort = pdesc.split("\n").head
       val hashCode = s"${pdesc.hashCode}"
       if(!hashToCountMap.contains(hashCode)) {
         hashToCountMap.addOne((hashCode, 0))
       }
       hashToCountMap(hashCode) = hashToCountMap(hashCode) + 1
       val pcode = s"${hashCode}_${hashToCountMap(hashCode) - 1}"
-      val thisCond = IO(new HAssertBundle(None))
+      val node = HAssertNode(desc = Seq((0, pdescShort)), level = 0, point = true, pdescShort)
+      val thisCond = EscapedWire(new HAssertBundle(node))
       thisCond.cond.get := !assertCond
       thisCond.suggestName(s"hwa_$pcode")
       SpecialWireInit(s, thisCond.cond.get, 0, prepend = true)
-      val node = HAssertNode(thisCond, Seq((0, pdesc)), 0)
-      nodeSeq = nodeSeq :+ node
+      hwaSeq = hwaSeq :+ thisCond
     }
   }
   def apply(cond: Bool)(implicit p: Parameters, s: SourceInfo): Unit = apply(cond, "")(p, s)
@@ -152,34 +179,37 @@ object HardwareAssertion {
     checkTimeout(clear, timeout, cf"timeout!")(p, s)
   }
 
-  def placePipe(level: Int, moduleTop: Boolean = false)(implicit p: Parameters): Option[Seq[HAssertNode]] = {
-    if(p(HardwareAssertionKey).enable && nodeSeq.count(_.level < level) != 0) {
-      val candidates = nodeSeq.filter(_.level < level)
-      val children = candidates.filter(_.level > 0) ++ squashPoints(candidates.filter(_.level == 0))
+  def placePipe(level: Int, moduleTop: Boolean = false, name:String = "")(implicit p: Parameters): Option[Seq[HAssertBundle]] = {
+    if(p(HardwareAssertionKey).enable && hwaSeq.count(_.node.level < level) != 0) {
+      val candidates = hwaSeq.filter(h => h.node.level < level && CheckBoring(h))
+      val children = candidates.filterNot(_.node.level == 0) ++ squashPoints(candidates.filter(_.node.level == 0))
       val width = p(HardwareAssertionKey).maxInfoBits
-      require(gid < (1L << width))
+      require(gid < (1L << width), s"hwa id $gid exceeds upper limit ${1L << width}")
       val nrPipe = if(moduleTop) 1 else (children.size + 15) / 16
       val segLen = (children.size + nrPipe - 1) / nrPipe
       val childrenSegSeq = children.grouped(segLen).toSeq
       require(nrPipe == childrenSegSeq.size)
       val res = for(cs <- childrenSegSeq) yield {
-        val hwa_arb = Module(new ResetRRArbiter(gen = UInt(width.W), n = cs.size))
-        val hwa_q = Module(new Queue(gen = UInt(width.W), entries = 2))
-        val hwa_out = Wire(new HAssertBundle(Some(width)))
-        dontTouch(hwa_arb.io)
-        hwa_out := DontCare
-        hwa_arb.io.in.zip(cs).foreach({ case(a, b) =>
-          val hwa = BoringUtils.bore(b.hassert).bus.get
-          a.valid := hwa.valid
-          hwa.ready := a.ready
-          a.bits := hwa.bits
-        })
-        hwa_q.io.enq <> hwa_arb.io.out
-        hwa_out.bus.get <> hwa_q.io.deq
-        HAssertNode(hwa_out, cs.flatMap(_.desc), level)
+        val hwa_n = HAssertNode(desc = cs.flatMap(_.node.desc), level = level, name = name)
+        val hwa_out = Wire(new HAssertBundle(hwa_n))
+        if(cs.size > 1) {
+          val hwa_arb = Module(new ResetRRArbiter(gen = UInt(width.W), n = cs.size))
+          val hwa_q = Module(new Queue(gen = UInt(width.W), entries = 2))
+          hwa_arb.io.in.zip(cs).foreach({ case (a, b) =>
+            val hwa = BoringUtils.bore(b).bus.get
+            a.valid := hwa.valid
+            hwa.ready := a.ready
+            a.bits := hwa.bits
+          })
+          hwa_q.io.enq <> hwa_arb.io.out
+          hwa_out.bus.get <> hwa_q.io.deq
+        } else {
+          hwa_out <> BoringUtils.bore(cs.head)
+        }
+        hwa_out
       }
       if(!moduleTop) {
-        nodeSeq = nodeSeq.filterNot(_.level < level) ++ res
+        hwaSeq = hwaSeq.filterNot(h => h.node.level < level && CheckBoring(h)) ++ res
       } else {
         gid = 0
         hashToCountMap.clear()
@@ -190,14 +220,57 @@ object HardwareAssertion {
     }
   }
 
-  def release(node: Option[HAssertNode], dir: String, pfx: String = "")(implicit p: Parameters): Unit = {
-    node.foreach(n => {
-      nodeSeq = Nil
+  def fromIO(buses:Option[MixedVec[HAssertBundle]])(implicit p: Parameters):Unit = {
+    val hwaP = p(HardwareAssertionKey)
+    val _impl = buses.isDefined && hwaP.enable
+    if(_impl) {
+      val _buses = buses.get
+      val allIds = _buses.flatMap(_.node.desc.map(_._1))
+      val offset = gid - allIds.min
+      val add = allIds.max + 1 - allIds.min
+      gid = gid + add
+      for(i <- _buses.indices) yield {
+        val _nd = _buses(i).node.desc.map(e => (e._1 + offset, e._2))
+        val _nn = HAssertNode(desc = _nd, level = _buses(i).node.level, name = s"${_buses(i).node.name}_ext")
+        val hwa = Wire(new HAssertBundle(_nn))
+        hwa <> _buses(i)
+        hwa.bus.foreach(_.bits := _buses(i).bus.get.bits + offset.U)
+        hwaSeq = hwaSeq :+ hwa
+      }
+    }
+  }
+
+  def exportIO(implicit p: Parameters): Option[MixedVec[HAssertBundle]] = {
+    val hwaP = p(HardwareAssertionKey)
+    if(hwaP.enable) {
+      val candidates = hwaSeq.filter(CheckBoring(_))
+      val children = candidates.filterNot(_.node.point) ++ squashPoints(candidates.filter(_.node.point))
+      if(children.nonEmpty) {
+        val _io = IO(MixedVec(children.map(c => new HAssertBundle(c.node))))
+        children.zip(_io).foreach({ case (a, b) =>
+          b <> BoringUtils.bore(a)
+        })
+        val allIds = children.flatMap(_.node.desc.map(_._1))
+        val dec = allIds.max + 1 - allIds.min
+        gid = gid - dec
+        hwaSeq = hwaSeq.filterNot(CheckBoring(_))
+        Some(_io)
+      } else {
+        None
+      }
+    } else {
+      None
+    }
+  }
+
+  def release(as: Option[Seq[HAssertBundle]], dir: String, pfx: String = ""): Unit = {
+    as.foreach(_.foreach(a => {
+      hwaSeq = Nil
       gid = 0
-      val str = n.desc
+      val str = a.node.desc
         .map(d => s"assertion ${d._1}: ${d._2}")
         .reduce((a, b) => a + '\n' + b)
       FileRegisters.add(dir, s"${pfx}_hardware_assertion.txt", str, dontCarePrefix = true)
-    })
+    }))
   }
 }
