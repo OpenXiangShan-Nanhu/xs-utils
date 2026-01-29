@@ -54,6 +54,7 @@ class SramArray(
   @public val RW0 = if(singlePort) Some(IO(new SpRamRwIO(width, maskSegments, depth))) else None
   @public val R0 = if(!singlePort) Some(IO(new DpRamRIO(width, depth))) else None
   @public val W0 = if(!singlePort) Some(IO(new DpRamWIO(width, maskSegments, depth))) else None
+  @public val RW0_clk = IO(Input(Clock()))
 
   private val mem = Module(new SramInstGen(singlePort, width, maskSegments, depth, delayRead))
   mem.io.RW0.foreach(rw => {
@@ -70,6 +71,7 @@ class SramArray(
     w <> W0.get
     w.en := W0.get.en
   })
+  mem.io.RW0_clk := RW0_clk
 
   override def desiredName: String = sramName.getOrElse(super.desiredName)
 }
@@ -77,20 +79,18 @@ class SramArray(
 object SramProto {
   private val defMap = mutable.Map[String, Definition[SramArray]]()
 
-  def init(sram: Instance[SramArray], singlePort: Boolean, clock: Clock, writeClock: Option[Clock]): Unit = {
+  def init(sram: Instance[SramArray], singlePort: Boolean, clock: Clock): Unit = {
+    sram.RW0_clk := clock
     if(singlePort) {
       dontTouch(sram.RW0.get)
       sram.RW0.get := DontCare
-      sram.RW0.get.clk := clock
       sram.RW0.get.en := false.B
     } else {
       dontTouch(sram.R0.get)
       dontTouch(sram.W0.get)
       sram.R0.get := DontCare
-      sram.R0.get.clk := clock
       sram.R0.get.en := false.B
       sram.W0.get := DontCare
-      sram.W0.get.clk := writeClock.getOrElse(clock)
       sram.W0.get.en := false.B
     }
   }
@@ -132,7 +132,6 @@ object SramProto {
     setup: Int,
     hold: Int,
     latency: Int,
-    writeClock: Option[Clock] = None,
     hasMbist: Boolean,
     suffix: String = "",
     powerCtl: Boolean
@@ -156,7 +155,7 @@ object SramProto {
         ))
     }
     val array = Instance(defMap(sramName.get))
-    SramProto.init(array, singlePort, clock, writeClock)
+    SramProto.init(array, singlePort, clock)
     (array, sramName.get)
   }
 }
