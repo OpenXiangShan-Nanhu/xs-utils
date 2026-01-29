@@ -149,9 +149,9 @@ class SRAMTemplate[T <: Data](
   holdRead: Boolean = false,
   bypassWrite: Boolean = false,
   useBitmask:  Boolean = false,
-  setup:Int = 1, // ask your leader to changed this
-  latency: Int = 1, // ask your leader to changed this
-  extraHold: Boolean = false,  //ask your leader to changed this
+  setup:Int = 1,
+  latency: Int = 1,
+  extraHold: Boolean = false,
   hasMbist: Boolean = false,
   explictBist:Boolean = false,
   suffix: String = "",
@@ -174,14 +174,14 @@ class SRAMTemplate[T <: Data](
   })
   require(latency >= 1)
   require(setup >= 1)
+  if(!singlePort) require(latency <= 2)
   private val pwctl = if(powerCtl || setup > 1) {
     Some(Wire(new GenericSramPowerCtl))
   } else {
     None
   }
   private val isc = if(extraHold) setup + 1 else setup // input steady cycles
-  private val rcg = Module(new MbistClockGateCell(isc > 1))
-  private val wcg = if(!singlePort) Some(Module(new MbistClockGateCell(isc > 1))) else None
+  private val icg = Module(new MbistClockGateCell(isc > 1))
   private val dataWidth = gen.getWidth * way
   private val (mbistBd, array, vname) = SramHelper.genRam(
     sp = sp,
@@ -194,8 +194,7 @@ class SRAMTemplate[T <: Data](
     extraHold = extraHold,
     broadcast = io.broadcast,
     pwctl = pwctl,
-    rclk = rcg.out_clock,
-    wclk = wcg.map(_.out_clock),
+    clk = icg.out_clock,
     suffix = suffix,
     foundry = foundry,
     sramInst = sramInst,
@@ -293,17 +292,8 @@ class SRAMTemplate[T <: Data](
     SramProto.write(array, singlePort, ramWaddr, ramWdata, ramWmask)
   }
 
-  rcg.dft.fromBroadcast(brcBd)
-  if(singlePort) {
-    rcg.E := ckRen | ckWen
-  } else {
-    rcg.E := ckRen
-  }
-
-  wcg.foreach(cg => {
-    cg.dft.fromBroadcast(brcBd)
-    cg.E := ckWen
-  })
+  icg.dft.fromBroadcast(brcBd)
+  icg.E := ckRen | ckWen
 
   if(pwctl.isDefined) {
     if(setup > 1) {
@@ -355,38 +345,18 @@ class SRAMTemplate[T <: Data](
   mbistBd.rdata := rdataReg
 
   private val interval = latency.max(isc)
-  private val (intvCntR, intvCntW) = if(singlePort) {
-    val intvCnt = RegInit(0.U(log2Ceil(interval + 1).W))
-    intvCnt.suggestName("intvCnt")
-    when(ramRen || ramWen) {
-      intvCnt := (interval - 1).U
-    }.elsewhen(intvCnt.orR) {
-      intvCnt := intvCnt - 1.U
-    }
-    (intvCnt, intvCnt)
-  } else {
-    val rIntvCnt = RegInit(0.U(log2Ceil(interval + 1).W))
-    val wIntvCnt = RegInit(0.U(log2Ceil(interval + 1).W))
-    rIntvCnt.suggestName("intvCntR")
-    wIntvCnt.suggestName("intvCntW")
-
-    when(ramRen) {
-      rIntvCnt := (interval - 1).U
-    }.elsewhen(rIntvCnt.orR) {
-      rIntvCnt := rIntvCnt - 1.U
-    }
-    when(ramWen) {
-      wIntvCnt := (interval - 1).U
-    }.elsewhen(wIntvCnt.orR) {
-      wIntvCnt := wIntvCnt - 1.U
-    }
-    (rIntvCnt, wIntvCnt)
+  private val intvCnt = RegInit(0.U(log2Ceil(interval + 1).W))
+  when(ramRen || ramWen) {
+    intvCnt := (interval - 1).U
+  }.elsewhen(intvCnt.orR) {
+    intvCnt := intvCnt - 1.U
   }
 
   private val singleHold = if(singlePort) io.w.req.valid else false.B
   private val resetHold = if(shouldReset) resetState else false.B
-  io.r.req.ready := intvCntR === 0.U && !resetHold && !singleHold
-  io.w.req.ready := intvCntW === 0.U && !resetHold
+  private val reqRdy = intvCnt === 0.U
+  io.r.req.ready := reqRdy && !resetHold && !singleHold
+  io.w.req.ready := reqRdy && !resetHold
 
   when(io.r.req.valid) {
     assert(io.r.req.bits.setIdx < set.U, cf"Illegal read addr 0x${io.r.req.bits.setIdx}%x on SRAM, max addr is 0x${(set - 1).toHexString}")

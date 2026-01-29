@@ -5,7 +5,6 @@ import chisel3.util._
 import xs.utils.GlobalData
 
 class SpRamRwIO(dw:Int, be:Int, set:Int) extends Bundle {
-  val clk = Input(Clock())
   val addr = Input(UInt(log2Ceil(set).W))
   val en = Input(Bool())
   val wmode = Input(Bool())
@@ -15,14 +14,12 @@ class SpRamRwIO(dw:Int, be:Int, set:Int) extends Bundle {
 }
 
 class DpRamRIO(dw:Int, set:Int) extends Bundle {
-  val clk = Input(Clock())
   val addr = Input(UInt(log2Ceil(set).W))
   val en = Input(Bool())
   val data = Output(UInt(dw.W))
 }
 
 class DpRamWIO(dw:Int, be:Int, set:Int) extends Bundle {
-  val clk = Input(Clock())
   val addr = Input(UInt(log2Ceil(set).W))
   val en = Input(Bool())
   val data = Input(UInt(dw.W))
@@ -34,6 +31,7 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends Bl
     val RW0 = if(sp) Some(new SpRamRwIO(dw, be, set)) else None
     val R0 = if(!sp) Some(new DpRamRIO(dw, set)) else None
     val W0 = if(!sp) Some(new DpRamWIO(dw, be, set)) else None
+    val RW0_clk = Input(Clock())
   })
   private val seg = dw / be
   private val fn = s"${GlobalData.prefix}GENERIC_RAM_${if(sp) 1 else 2}P${set}D${dw}W${be}M${if(delay)"D" else ""}"
@@ -49,12 +47,10 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends Bl
          |  input [${dw - 1}:0] RW0_wdata,
          |  output [${dw - 1}:0] RW0_rdata""".stripMargin
     } else {
-      s"""  input R0_clk,
+      s"""  input RW0_clk,
          |  input R0_en,
          |  input [${log2Ceil(set) - 1}:0] R0_addr,
          |  output [${dw - 1}:0] R0_data,
-         |
-         |  input W0_clk,
          |  input W0_en,
          |  input [${log2Ceil(set) - 1}:0] W0_addr,
          |  ${if(be > 1) s"input [${be - 1}:0] W0_mask," else ""}
@@ -79,17 +75,17 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends Bl
   }
 
   private def genDpReadWrite:String = s"""
-       |  always @ (posedge W0_clk) begin
+       |  always @ (posedge RW0_clk) begin
        |    if(W0_en) begin
        |$genWriteLoop
        |    end
        |  end
        |
-       |  always @ (posedge R0_clk) begin
+       |  always @ (posedge RW0_clk) begin
        |    if(R0_en) rdata <= mem[R0_addr];
        |  end
        |${if(delay) "`ifdef DELAY_READ" else "  assign R0_data = rdata;"}
-       |${if(delay) "  always @ (posedge R0_clk) begin" else ""}
+       |${if(delay) "  always @ (posedge RW0_clk) begin" else ""}
        |${if(delay) "    rdata_delay <= rdata;" else ""}
        |${if(delay) "  end" else ""}
        |${if(delay) "  assign R0_data = rdata_delay;" else ""}

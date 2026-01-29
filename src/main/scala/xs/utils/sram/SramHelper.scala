@@ -166,8 +166,7 @@ object SramHelper {
     extraHold: Boolean,
     broadcast: Option[SramBroadcastBundle],
     pwctl: Option[GenericSramPowerCtl],
-    rclk: Clock,
-    wclk: Option[Clock],
+    clk: Clock,
     suffix: String,
     foundry: String,
     sramInst: String,
@@ -175,7 +174,7 @@ object SramHelper {
     holder: () => String,
   ): (Ram2Mbist, Instance[SramArray], String) = {
 
-    val (array, vname) = SramProto(rclk, !dp, set, sp.sramDataBits, sp.sramMaskBits, setup, hold, latency, wclk, bist || broadcast.isDefined, suffix, pwctl.isDefined)
+    val (array, vname) = SramProto(clk, !dp, set, sp.sramDataBits, sp.sramMaskBits, setup, hold, latency, bist || broadcast.isDefined, suffix, pwctl.isDefined)
     val bdParam = Ram2MbistParams(
       sp,
       set,
