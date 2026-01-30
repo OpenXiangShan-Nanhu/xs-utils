@@ -71,7 +71,7 @@ class SramInstGen(sp: Boolean, dw: Int, be: Int, set: Int, delay: Boolean) exten
         SramInstGen.ioStrGen(pfx = "W0", in = true, dw = log2Ceil(set), name = "addr"),
         SramInstGen.ioStrGen(pfx = "W0", in = true, dw = dw, name = "data")
       ) ++ Option.when(be > 1)(
-        SramInstGen.ioStrGen(pfx = "W0", in = true, dw = be, name = "wmask")
+        SramInstGen.ioStrGen(pfx = "W0", in = true, dw = be, name = "mask")
       )
       ios.mkString("  ", ",\n  ", "")
     }
