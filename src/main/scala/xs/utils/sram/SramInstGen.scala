@@ -4,65 +4,84 @@ import chisel3._
 import chisel3.util._
 import xs.utils.GlobalData
 
-class SpRamRwIO(dw:Int, be:Int, set:Int) extends Bundle {
-  val addr = Input(UInt(log2Ceil(set).W))
-  val en = Input(Bool())
+class SpRamRwIO(dw: Int, be: Int, set: Int) extends Bundle {
+  val addr  = Input(UInt(log2Ceil(set).W))
+  val en    = Input(Bool())
   val wmode = Input(Bool())
   val wmask = if(be > 1) Some(Input(UInt(be.W))) else None
   val wdata = Input(UInt(dw.W))
   val rdata = Output(UInt(dw.W))
 }
 
-class DpRamRIO(dw:Int, set:Int) extends Bundle {
+class DpRamRIO(dw: Int, set: Int) extends Bundle {
   val addr = Input(UInt(log2Ceil(set).W))
-  val en = Input(Bool())
+  val en   = Input(Bool())
   val data = Output(UInt(dw.W))
 }
 
-class DpRamWIO(dw:Int, be:Int, set:Int) extends Bundle {
+class DpRamWIO(dw: Int, be: Int, set: Int) extends Bundle {
   val addr = Input(UInt(log2Ceil(set).W))
-  val en = Input(Bool())
+  val en   = Input(Bool())
   val data = Input(UInt(dw.W))
   val mask = if(be > 1) Some(Input(UInt(be.W))) else None
 }
 
-class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends BlackBox with HasBlackBoxInline {
-  val io = IO(new Bundle{
-    val RW0 = if(sp) Some(new SpRamRwIO(dw, be, set)) else None
-    val R0 = if(!sp) Some(new DpRamRIO(dw, set)) else None
-    val W0 = if(!sp) Some(new DpRamWIO(dw, be, set)) else None
+object SramInstGen {
+  def ioStrGen(pfx: String, in: Boolean, dw: Int, name: String): String = {
+    val nstr = if(pfx.nonEmpty) s"${pfx}_$name" else name
+    val wstr = if(dw == 1) "" else s"[${dw - 1}:0]"
+    val dstr = if(in) "input  " else "output "
+    "%swire %-10s%s".format(dstr, wstr, nstr);
+  }
+}
+
+class SramInstGen(sp: Boolean, dw: Int, be: Int, set: Int, delay: Boolean) extends BlackBox with HasBlackBoxInline {
+  val io = IO(new Bundle {
+    val RW0     = if(sp) Some(new SpRamRwIO(dw, be, set)) else None
+    val R0      = if(!sp) Some(new DpRamRIO(dw, set)) else None
+    val W0      = if(!sp) Some(new DpRamWIO(dw, be, set)) else None
     val RW0_clk = Input(Clock())
   })
   private val seg = dw / be
-  private val fn = s"${GlobalData.prefix}GENERIC_RAM_${if(sp) 1 else 2}P${set}D${dw}W${be}M${if(delay)"D" else ""}"
+  private val fn  = s"${GlobalData.prefix}GENERIC_RAM_${if(sp) 1 else 2}P${set}D${dw}W${be}M${if(delay) "D" else ""}"
+
   override val desiredName = fn
 
-  private def genIO:String = {
+  private def genIO: String = {
     if(sp) {
-      s"""  input RW0_clk,
-         |  input [${log2Ceil(set) - 1}:0] RW0_addr,
-         |  input RW0_en,
-         |  input RW0_wmode,
-         |  ${if(be > 1) s"input [${be - 1}:0] RW0_wmask," else ""}
-         |  input [${dw - 1}:0] RW0_wdata,
-         |  output [${dw - 1}:0] RW0_rdata""".stripMargin
+      val ios = Seq(
+        SramInstGen.ioStrGen(pfx = "RW0", in = true, dw = 1, name = "clk"),
+        SramInstGen.ioStrGen(pfx = "RW0", in = true, dw = log2Ceil(set), name = "addr"),
+        SramInstGen.ioStrGen(pfx = "RW0", in = true, dw = 1, name = "en"),
+        SramInstGen.ioStrGen(pfx = "RW0", in = true, dw = 1, name = "wmode")
+      ) ++ Option.when(be > 1)(
+        SramInstGen.ioStrGen(pfx = "RW0", in = true, dw = be, name = "wmask")
+      ) ++ Seq(
+        SramInstGen.ioStrGen(pfx = "RW0", in = true, dw = dw, name = "wdata"),
+        SramInstGen.ioStrGen(pfx = "RW0", in = false, dw = dw, name = "rdata")
+      )
+      ios.mkString("  ", ",\n  ", "")
     } else {
-      s"""  input RW0_clk,
-         |  input R0_en,
-         |  input [${log2Ceil(set) - 1}:0] R0_addr,
-         |  output [${dw - 1}:0] R0_data,
-         |  input W0_en,
-         |  input [${log2Ceil(set) - 1}:0] W0_addr,
-         |  ${if(be > 1) s"input [${be - 1}:0] W0_mask," else ""}
-         |  input [${dw - 1}:0] W0_data""".stripMargin
+      val ios = Seq(
+        SramInstGen.ioStrGen(pfx = "RW0", in = true, dw = 1, name = "clk"),
+        SramInstGen.ioStrGen(pfx = "R0", in = true, dw = 1, name = "en"),
+        SramInstGen.ioStrGen(pfx = "R0", in = true, dw = log2Ceil(set), name = "addr"),
+        SramInstGen.ioStrGen(pfx = "R0", in = false, dw = dw, name = "data"),
+        SramInstGen.ioStrGen(pfx = "W0", in = true, dw = 1, name = "en"),
+        SramInstGen.ioStrGen(pfx = "W0", in = true, dw = log2Ceil(set), name = "addr"),
+        SramInstGen.ioStrGen(pfx = "W0", in = true, dw = dw, name = "data")
+      ) ++ Option.when(be > 1)(
+        SramInstGen.ioStrGen(pfx = "W0", in = true, dw = be, name = "wmask")
+      )
+      ios.mkString("  ", ",\n  ", "")
     }
   }
 
-  private def genWriteLoop:String = {
+  private def genWriteLoop: String = {
     val mask = if(sp) "RW0_wmask" else "W0_mask"
     val addr = if(sp) "RW0_addr" else "W0_addr"
     val data = if(sp) "RW0_wdata" else "W0_data"
-    val inc = if(sp) "  " else ""
+    val inc  = if(sp) "  " else ""
     if(be == 1) {
       s"      ${inc}mem[$addr] <= $data;".stripMargin
     } else {
@@ -74,7 +93,8 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends Bl
     }
   }
 
-  private def genDpReadWrite:String = s"""
+  private def genDpReadWrite:String = {
+    s"""
        |  always @ (posedge RW0_clk) begin
        |    if(W0_en) begin
        |$genWriteLoop
@@ -93,9 +113,9 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends Bl
        |${if(delay) "  assign R0_data = rdata;" else ""}
        |${if(delay) "`endif" else ""}
        |""".stripMargin
+  }
 
-
-  private def genSpReadWrite:String =
+  private def genSpReadWrite: String =
     s"""
        |  always @ (posedge RW0_clk) begin
        |    if(RW0_en) begin
@@ -116,7 +136,8 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends Bl
        |${if(delay) "`endif" else ""}
        |""".stripMargin
 
-  setInline(fn + ".sv",
+  setInline(
+    fn + ".sv",
     s"""// VCS coverage exclude_file
        |`ifdef SYNTHESIS
        |  `define DELAY_READ
@@ -137,5 +158,6 @@ class SramInstGen(sp:Boolean, dw:Int, be:Int, set:Int, delay:Boolean) extends Bl
        |`ifdef DELAY_READ
        |  `undef DELAY_READ
        |`endif
-       |""".stripMargin)
+       |""".stripMargin
+  )
 }
