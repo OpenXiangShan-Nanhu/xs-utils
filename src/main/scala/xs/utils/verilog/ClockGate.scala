@@ -1,14 +1,14 @@
-package xs.utils
+package xs.utils.verilog
 
 import chisel3._
 import chisel3.experimental.BaseModule
-import chisel3.util._
 import chisel3.util.experimental.BoringUtils
+import xs.utils.GlobalData
 
 import scala.collection.mutable
 
-class ClockGate extends BlackBox with HasBlackBoxInline {
-  val io = IO(new Bundle {
+class ClockGate extends ExtModule {
+  val io = FlatIO(new Bundle {
     val TE = Input(Bool())
     val E = Input(Bool())
     val CK = Input(Clock())

@@ -13,7 +13,7 @@ class assert_fifo_index(
   category: Int,
   coverage_level_1: Int,
   coverage_level_2: Int,
-  coverage_level_3: Int) extends BlackBox(
+  coverage_level_3: Int) extends ExtModule(
     Map(
       "severity_level" -> severity_level,
       "depth" -> depth,
@@ -27,7 +27,7 @@ class assert_fifo_index(
       "coverage_level_3" -> coverage_level_3
     )
   ) {
-  val io = IO(new Bundle {
+  val io = FlatIO(new Bundle {
     val clk = Input(Clock())
     val reset_n = Input(Reset())
     val push = Input(Bool())

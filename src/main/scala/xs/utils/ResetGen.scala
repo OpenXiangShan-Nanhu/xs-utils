@@ -34,9 +34,9 @@ class ResetGenIO extends Bundle {
   val o_raw_reset = Output(AsyncReset())
 }
 
-class ResetGenInner(SYNC_NUM: Int = 2) extends BlackBox with HasBlackBoxInline {
+class ResetGenInner(SYNC_NUM: Int = 2) extends ExtModule {
   require(SYNC_NUM > 1)
-  val io = IO(new ResetGenIO)
+  val io = FlatIO(new ResetGenIO)
   private val modName = s"${GlobalData.prefix}ResetGenInnerS${SYNC_NUM}"
   override val desiredName = modName
   setInline(s"$modName.sv",

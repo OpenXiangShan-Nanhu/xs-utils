@@ -17,8 +17,8 @@ object BigIntToOneHotString {
   }
 }
 
-class PriorityEncoderOneHotHigh(width:Int) extends BlackBox with HasBlackBoxInline {
-  val io = IO(new Bundle {
+class PriorityEncoderOneHotHigh(width:Int) extends ExtModule {
+  val io = FlatIO(new Bundle {
     val i_data = Input(UInt(width.W))
     val o_code = Output(UInt(width.W))
   })

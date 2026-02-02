@@ -1,10 +1,10 @@
-package xs.utils
+package xs.utils.verilog
 
 import chisel3._
-import chisel3.util.HasBlackBoxInline
+import xs.utils.GlobalData
 
-class ClockManagerWrapper extends BlackBox with HasBlackBoxInline {
-  val io = IO(new Bundle {
+class ClockManagerWrapper extends ExtModule {
+  val io = FlatIO(new Bundle {
     val cfg = Input(Vec(8, UInt(32.W)))
     val in_clock = Input(Clock())
     val cpu_clock = Output(Clock())
