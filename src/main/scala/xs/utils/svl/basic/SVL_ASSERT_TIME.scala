@@ -13,7 +13,7 @@ class assert_time(
   category: Int,
   coverage_level_1: Int,
   coverage_level_2: Int,
-  coverage_level_3: Int) extends BlackBox(
+  coverage_level_3: Int) extends ExtModule(
     Map(
       "severity_level" -> severity_level,
       "num_cks" -> num_cks,
@@ -26,7 +26,7 @@ class assert_time(
       "coverage_level_3" -> coverage_level_3
     )
   ) {
-  val io = IO(new Bundle {
+  val io = FlatIO(new Bundle {
     val clk = Input(Clock())
     val reset_n = Input(Reset())
     val start_event = Input(Bool())

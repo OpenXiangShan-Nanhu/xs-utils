@@ -5,8 +5,8 @@ import chisel3.experimental.noPrefix
 import chisel3.util._
 import xs.utils.GlobalData
 
-class PriorityEncoderLow(width:Int) extends BlackBox with HasBlackBoxInline {
-  val io = IO(new Bundle {
+class PriorityEncoderLow(width:Int) extends ExtModule {
+  val io = FlatIO(new Bundle {
     val i_data = Input(UInt(width.W))
     val o_code = Output(UInt(log2Ceil(width).W))
   })

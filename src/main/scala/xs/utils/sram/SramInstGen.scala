@@ -35,8 +35,8 @@ object SramInstGen {
   }
 }
 
-class SramInstGen(sp: Boolean, dw: Int, be: Int, set: Int, delay: Boolean) extends BlackBox with HasBlackBoxInline {
-  val io = IO(new Bundle {
+class SramInstGen(sp: Boolean, dw: Int, be: Int, set: Int, delay: Boolean) extends ExtModule {
+  val io = FlatIO(new Bundle {
     val RW0     = if(sp) Some(new SpRamRwIO(dw, be, set)) else None
     val R0      = if(!sp) Some(new DpRamRIO(dw, set)) else None
     val W0      = if(!sp) Some(new DpRamWIO(dw, be, set)) else None

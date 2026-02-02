@@ -7,7 +7,7 @@ class assert_never(
   severity_level: Int,
   property_type: Int,
   msg: String,
-  category: Int) extends BlackBox(
+  category: Int) extends ExtModule(
     Map(
       "severity_level" -> severity_level,
       "property_type" -> property_type,
@@ -15,7 +15,7 @@ class assert_never(
       "category" -> category
     )
   ) {
-  val io = IO(new Bundle {
+  val io = FlatIO(new Bundle {
     val clk = Input(Clock())
     val reset_n = Input(Reset())
     val test_expr = Input(Bool())

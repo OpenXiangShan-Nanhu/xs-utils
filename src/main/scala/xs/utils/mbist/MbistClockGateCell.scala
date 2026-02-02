@@ -1,7 +1,7 @@
 package xs.utils.mbist
 
 import chisel3._
-import xs.utils.ClockGate
+import xs.utils.verilog.ClockGate
 import xs.utils.sram.SramBroadcastBundle
 
 class CgDftBundle extends Bundle {

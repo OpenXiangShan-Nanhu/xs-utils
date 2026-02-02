@@ -1,7 +1,6 @@
 package xs.utils.perf
 
 import chisel3._
-import chisel3.util.HasBlackBoxInline
 
 class LogPerfIO extends Bundle {
   val timer = UInt(64.W)
@@ -10,8 +9,8 @@ class LogPerfIO extends Bundle {
   val dump = Bool()
 }
 
-class LogPerfHelper extends BlackBox with HasBlackBoxInline {
-  val io = IO(Output(new LogPerfIO))
+class LogPerfHelper extends ExtModule {
+  val io = FlatIO(Output(new LogPerfIO))
 
   val sverilog =
     """`ifndef SIM_TOP_MODULE_NAME
