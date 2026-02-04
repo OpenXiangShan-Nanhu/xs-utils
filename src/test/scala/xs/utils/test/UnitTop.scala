@@ -3,9 +3,9 @@ package xs.utils.test
 import chisel3._
 import chisel3.stage.ChiselGeneratorAnnotation
 import chisel3.util.log2Ceil
+import circt.stage.ChiselStage
 import firrtl.AnnotationSeq
 import xs.utils.arb.VipArbiter
-import xs.utils.stage.XsStage
 import xs.utils.verilog._
 
 class PriorityEncoderHighMod(width:Int) extends Module {
@@ -18,7 +18,7 @@ class PriorityEncoderHighMod(width:Int) extends Module {
 
 object PriorityEncoderHighTop extends App {
   val (config, firrtlOpts) = Parser(args)
-  (new XsStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new PriorityEncoderHighMod(16)))
+  (new ChiselStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new PriorityEncoderHighMod(16)))
 }
 
 class PriorityEncoderLowMod(width:Int) extends Module {
@@ -31,7 +31,7 @@ class PriorityEncoderLowMod(width:Int) extends Module {
 
 object PriorityEncoderLowTop extends App {
   val (config, firrtlOpts) = Parser(args)
-  (new XsStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new PriorityEncoderLowMod(24)))
+  (new ChiselStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new PriorityEncoderLowMod(24)))
 }
 
 class PriorityEncoderOneHotHighMod(width:Int) extends Module {
@@ -44,7 +44,7 @@ class PriorityEncoderOneHotHighMod(width:Int) extends Module {
 
 object PriorityEncoderOneHotHighTop extends App {
   val (config, firrtlOpts) = Parser(args)
-  (new XsStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new PriorityEncoderOneHotHighMod(35)))
+  (new ChiselStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new PriorityEncoderOneHotHighMod(35)))
 }
 
 class PriorityEncoderOneHotLowMod(width:Int) extends Module {
@@ -57,10 +57,10 @@ class PriorityEncoderOneHotLowMod(width:Int) extends Module {
 
 object PriorityEncoderOneHotLowTop extends App {
   val (config, firrtlOpts) = Parser(args)
-  (new XsStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new PriorityEncoderOneHotLowMod(18)))
+  (new ChiselStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new PriorityEncoderOneHotLowMod(18)))
 }
 
 object VipArbTop extends App {
   val (config, firrtlOpts) = Parser(args)
-  (new XsStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new VipArbiter(UInt(16.W), 5)))
+  (new ChiselStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new VipArbiter(UInt(16.W), 5)))
 }

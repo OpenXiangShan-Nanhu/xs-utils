@@ -6,13 +6,12 @@ import chisel3.experimental.hierarchy.core._
 import chisel3.experimental.hierarchy.{instantiable, public}
 import chisel3.stage.ChiselGeneratorAnnotation
 import chisel3.util.Decoupled
+import circt.stage.ChiselStage
 import firrtl.AnnotationSeq
 import org.chipsalliance.cde.config.{Config, Parameters}
 import xs.utils.FileRegisters
 import xs.utils.arb.VipArbiter
-import xs.utils.debug.{HAssert, HardwareAssertion, HardwareAssertionKey, HwaParams}
-import xs.utils.stage.XsStage
-import xs.utils.test.HAssertTestTop.args
+import xs.utils.debug.{HAssert, HardwareAssertionKey, HwaParams}
 
 object ModAHelper {
   def xor(in0:Bool, in1:Bool)(implicit p: Parameters, s: SourceInfo):Unit = {
@@ -107,6 +106,6 @@ class HAssertTest extends Module {
 
 object HAssertTestTop extends App {
   val (config, firrtlOpts) = Parser(args)
-  (new XsStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new HAssertTest))
+  (new ChiselStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new HAssertTest))
   FileRegisters.write("build", "HAssertTest")
 }
