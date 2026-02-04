@@ -1,17 +1,12 @@
 package xs.utils.test
 
 import chisel3._
-import chisel3.experimental.SourceInfo
 import chisel3.stage.ChiselGeneratorAnnotation
-import chisel3.util._
 import firrtl.AnnotationSeq
-import org.chipsalliance.cde.config.{Config, Parameters}
-import xs.utils.FileRegisters
-import xs.utils.debug.{HAssert, HardwareAssertionKey, HwaParams}
-import xs.utils.stage.XsStage
 import xs.utils.cvl.examples.design._
 import xs.utils.cvl.examples.sva._
 import chisel3.probe._
+import circt.stage.ChiselStage
 
 class CVL_FORMAL_AIP_TB extends Module {
   val io = IO(new Bundle {
@@ -38,5 +33,5 @@ class CVL_FORMAL_AIP_TB extends Module {
 
 object CVL_FORMAL_AIP_TestTop extends App {
   val (config, firrtlOpts) = Parser(args)
-  (new XsStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new CVL_FORMAL_AIP_TB))
+  (new ChiselStage).execute(firrtlOpts, AnnotationSeq(TestTopHelper.firtoolOpts) :+ ChiselGeneratorAnnotation(() => new CVL_FORMAL_AIP_TB))
 }

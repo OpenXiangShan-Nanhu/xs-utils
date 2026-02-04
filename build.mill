@@ -4,8 +4,8 @@ import scalalib.*
 
 object v {
   val defaultScalaVersion = "2.13.18"
-  val firtoolVersion = "1.139.0"
-  val chiselVersion = "7.7.0"
+  val firtoolVersion = "1.140.0"
+  val chiselVersion = "7.8.0"
 
   val scalatest = mvn"org.scalatest::scalatest:3.2.19"
   val scalacheck = mvn"org.scalatestplus::scalacheck-1-18:3.2.19.0"
@@ -24,6 +24,8 @@ object v {
   val dataclass = mvn"io.github.alexarchambault::data-class:0.2.7"
   val mdoc = mvn"org.scalameta::mdoc:2.8.2"
   val scalaReflect = mvn"org.scala-lang:scala-reflect:$defaultScalaVersion"
+  val unrollPlugin = mvn"com.lihaoyi:::unroll-plugin:0.3.0"
+  val unrollAnno = mvn"com.lihaoyi::unroll-annotation:0.3.0"
 
   val scalaCrossVersions = Seq(defaultScalaVersion, "3")
 
@@ -166,6 +168,8 @@ object `package` extends VersionSbtModule {
           v.scalatest,
           v.scalacheck
         )
+        def compileMvnDeps = Seq(v.unrollAnno)
+        def scalacPluginMvnDeps = Seq(v.unrollPlugin)
       }
     }
 
