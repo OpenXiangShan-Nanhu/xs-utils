@@ -36,6 +36,7 @@ object SramInstGen {
 }
 
 class SramInstGen(sp: Boolean, dw: Int, be: Int, set: Int, delay: Boolean) extends ExtModule {
+  require(set > 1, s"Illegal SRAM depth $set")
   val io = FlatIO(new Bundle {
     val RW0     = if(sp) Some(new SpRamRwIO(dw, be, set)) else None
     val R0      = if(!sp) Some(new DpRamRIO(dw, set)) else None
