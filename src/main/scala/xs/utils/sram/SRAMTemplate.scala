@@ -315,6 +315,10 @@ class SRAMTemplate[T <: Data](
       pwctl.get.deep_sleep := false.B
       pwctl.get.shut_down := false.B
     }
+    val sleep = pwctl.get.asUInt.orR
+    when(sleep) {
+      assert(!ramWen && !ramRen, s"sleeping sram receive a request!")
+    }
   }
 
   private val rdataReg = Reg(UInt(dataWidth.W))
