@@ -317,7 +317,7 @@ class SRAMTemplate[T <: Data](
     }
     val sleep = pwctl.get.asUInt.orR
     when(sleep) {
-      assert(!ramWen && !ramRen, s"sleeping sram receive a request!")
+      assert(!wenStretched && !renStretched, s"sleeping sram receive a request!")
     }
   }
 
