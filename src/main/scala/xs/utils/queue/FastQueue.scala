@@ -3,58 +3,61 @@ package xs.utils.queue
 import chisel3._
 import chisel3.util._
 
-class FastQueue[T <: Data](gen:T, size:Int, deqDataNoX:Boolean) extends Module with HasCircularQueuePtrHelper {
+
+class FastQueue[T <: Data](gen:T, size:Int, deqDataNoX:Boolean = false) extends Module with HasCircularQueuePtrHelper {
+  require(size >= 2)
   val io = IO(new Bundle {
     val enq     = Flipped(Decoupled(gen))
     val deq     = Decoupled(gen)
     val count   = Output(UInt(log2Ceil(size + 1).W))
     val freeNum = Output(UInt(log2Ceil(size + 1).W))
   })
-  require(size > 1)
-  private val valids = RegInit(VecInit(Seq.fill(size)(false.B)))
-  private val array = Reg(Vec(size, gen))
-  private val enqRdyReg = RegInit(true.B)
 
-  private val enqFire = io.enq.fire
-  private val deqFire = io.deq.fire
-  private val lastEmptyOH = Cat(valids.reverse) +& 1.U
-  private val enqPtrOH = Mux(deqFire, Cat(false.B, lastEmptyOH(size - 1, 1)), lastEmptyOH(size - 1, 0))
-  for(i <- 0 until (size - 1)) {
-    when(enqFire && enqPtrOH(i)) {
-      valids(i) := true.B
-      array(i) := io.enq.bits
-    }.elsewhen(deqFire) {
-      valids(i) := valids(i + 1)
-      array(i) := Mux(valids(i + 1), array(i + 1), array(i))
+  private val driver    = Module(new Queue(gen = gen, entries = 1, pipe = true, flow = false))
+  private val waterline = RegInit(1.U((size + 1).W))
+  private val full      = waterline(size)
+
+  io.deq       <> driver.io.deq
+  io.enq.ready := !full
+
+  if(size > 2) {
+    val holder = Module(new Queue(gen = gen, entries = 1, pipe = true, flow = false))
+    val squeue = Module(new Queue(gen = gen, entries = size - 2, pipe = false, flow = true))
+
+    squeue.io.deq.ready := driver.io.enq.ready
+    driver.io.enq.valid := io.enq.valid || squeue.io.deq.valid
+    when(squeue.io.deq.valid) {
+      driver.io.enq.bits := squeue.io.deq.bits
+    }.otherwise {
+      driver.io.enq.bits := io.enq.bits
     }
-  }
-  when(enqFire && enqPtrOH(size - 1)) {
-    valids.last := true.B
-    array.last := io.enq.bits
-  }.elsewhen(deqFire) {
-    valids.last := false.B
+
+    // When count==1 and driver can take io.enq directly during a simultaneous
+    // deq/enq cycle, do not duplicate the same flit into holder.
+    holder.io.enq.valid := io.enq.valid && !waterline(0) && !(waterline(1) && driver.io.enq.ready)
+    holder.io.enq.bits  := io.enq.bits
+    squeue.io.enq       <> holder.io.deq
+  } else {
+    val holder = Module(new Queue(gen = gen, entries = 1, pipe = false, flow = true))
+    driver.io.enq <> holder.io.deq
+    holder.io.enq <> io.enq
+    io.enq.ready  := !full
   }
 
-  when(enqFire && !deqFire) {
-    enqRdyReg := !valids(size - 2)
-  }.elsewhen(!enqFire && deqFire) {
-    enqRdyReg := true.B
+  if(deqDataNoX) {
+    io.deq.bits := Mux(driver.io.deq.valid, driver.io.deq.bits, 0.U.asTypeOf(gen))
   }
 
-  io.deq.valid := valids.head
-  io.deq.bits := array.head
-  io.enq.ready := enqRdyReg
-  if(deqDataNoX) io.deq.bits := Mux(io.deq.valid, array.head, 0.U.asTypeOf(gen))
+  private val ptrMoveVec = Cat(io.enq.fire, io.deq.fire)
+  when(ptrMoveVec === "b01".U) {
+    waterline := Cat(false.B, waterline(size, 1))
+  }.elsewhen(ptrMoveVec === "b10".U) {
+    waterline := Cat(waterline(size - 1, 0), false.B)
+  }
+  assert(PopCount(waterline) === 1.U)
 
-  io.count := PopCount(valids)
-  io.freeNum := size.U - io.count
-  when(io.count.orR) {
-    assert(io.deq.valid)
-  }
-  when(io.count === size.U) {
-    assert(!io.enq.ready)
-  }
-  assert(PopCount(lastEmptyOH) === 1.U)
+  io.count   := Mux1H(Seq.tabulate(size + 1)(i => (waterline(i), i.U)))
+  io.freeNum := Mux1H(Seq.tabulate(size + 1)(i => (waterline(i), (size - i).U)))
 }
 
 object FastQueueRaw {
