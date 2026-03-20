@@ -7,6 +7,7 @@ import chisel3.util.experimental.BoringUtils
 import xs.utils.{FileRegisters, ResetRRArbiter}
 import chisel3.experimental.{CheckBoring, EscapedWire, SourceInfo, SourceLine, SpecialWireInit, noPrefix}
 import org.chipsalliance.cde.config.{Field, Parameters}
+import xs.utils.queue.FastQueue
 
 import scala.collection.mutable
 
@@ -194,7 +195,7 @@ object HardwareAssertion {
         val hwa_out = Wire(new HAssertBundle(hwa_n))
         if(cs.size > 1) {
           val hwa_arb = Module(new ResetRRArbiter(gen = UInt(width.W), n = cs.size))
-          val hwa_q = Module(new Queue(gen = UInt(width.W), entries = 2))
+          val hwa_q = Module(new FastQueue(gen = UInt(width.W), size = 2))
           hwa_arb.io.in.zip(cs).foreach({ case (a, b) =>
             val hwa = BoringUtils.bore(b).bus.get
             a.valid := hwa.valid
