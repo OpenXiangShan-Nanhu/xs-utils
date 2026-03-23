@@ -22,7 +22,7 @@ class FastQueue[T <: Data](gen:T, size:Int, deqDataNoX:Boolean = false) extends 
 
   if(size > 2) {
     val holder = Module(new Queue(gen = gen, entries = 1, pipe = true, flow = false))
-    val squeue = Module(new Queue(gen = gen, entries = size - 2, pipe = size == 3, flow = true))
+    val squeue = Module(new Queue(gen = gen, entries = size - 2, pipe = false, flow = true))
 
     squeue.io.deq.ready := driver.io.enq.ready
     driver.io.enq.valid := io.enq.valid || squeue.io.deq.valid
