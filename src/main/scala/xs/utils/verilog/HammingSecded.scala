@@ -25,27 +25,29 @@ object HammingSecded {
 
   def encode(data: UInt): UInt = {
     val w = data.getWidth
-    val enc = Module(new HammingSecdedEncoder(w))
+    val enc = Module(new HammingSecdedEncoder(w, HammingSecded.calcEccBits(w)))
     enc.io.i_data := data
     enc.io.o_ecc
   }
 
   def decode(data: UInt, ecc: UInt): (UInt, Bool, Bool) = {
     val w = data.getWidth
-    val dec = Module(new HammingSecdedDecoder(w))
+    val dec = Module(new HammingSecdedDecoder(w, HammingSecded.calcEccBits(w)))
     dec.io.i_data := data
     dec.io.i_ecc := ecc
     (dec.io.o_data, dec.io.o_ce, dec.io.o_ue)
   }
 }
 
-class HammingSecdedEncoder(dataBits: Int) extends ExtModule {
-  private val eccBits = HammingSecded.calcEccBits(dataBits)
+class HammingSecdedEncoder(dataBits: Int, eccBits:Int) extends ExtModule(Map(
+  "DATA_BITS" -> dataBits,
+  "ECC_BITS" -> eccBits
+)) {
   val io = FlatIO(new Bundle {
     val i_data = Input(UInt(dataBits.W))
     val o_ecc = Output(UInt(eccBits.W))
   })
-  private val modName = s"${GlobalData.prefix}HammingSecdedEncoder$dataBits"
+  private val modName = s"${GlobalData.prefix}HammingSecdedEncoder"
   override val desiredName = modName
   setInline(s"$modName.sv",
     s"""// Hamming SECDED Encoder — parameterized, self-contained SystemVerilog
@@ -57,16 +59,17 @@ class HammingSecdedEncoder(dataBits: Int) extends ExtModule {
        |//   - An extra overall-parity bit enables double-error detection
        |//
        |module $modName #(
-       |  parameter int DATA_BITS = $dataBits
+       |  parameter int DATA_BITS = 64,
+       |  parameter int ECC_BITS  = 7
        |)(
-       |  input  logic [DATA_BITS-1:0]          i_data,
-       |  output logic [${eccBits - 1}:0]       o_ecc   // {overall_parity, syndrome}
+       |  input  logic [DATA_BITS-1:0]      i_data,
+       |  output logic [ECC_BITS-1:0]       o_ecc   // {overall_parity, syndrome}
        |);
        |
        |  // ---------------------------------------------------------------
        |  // Step 1: Calculate how many parity bits we need.
        |  //         We need r such that 2^r >= DATA_BITS + r + 1.
-       |  //         Total ECC bits = parity bits + 1 (overall parity) = ${eccBits}
+       |  //         Total ECC bits = parity bits + 1 (overall parity) = ECC_BITS
        |  // ---------------------------------------------------------------
        |  function automatic int calc_parity_bits(int d);
        |    int r;
@@ -133,8 +136,10 @@ class HammingSecdedEncoder(dataBits: Int) extends ExtModule {
        |""".stripMargin)
 }
 
-class HammingSecdedDecoder(dataBits: Int) extends ExtModule {
-  private val eccBits = HammingSecded.calcEccBits(dataBits)
+class HammingSecdedDecoder(dataBits: Int, eccBits:Int) extends ExtModule(Map(
+  "DATA_BITS" -> dataBits,
+  "ECC_BITS" -> eccBits
+)) {
   val io = FlatIO(new Bundle {
     val i_data = Input(UInt(dataBits.W))
     val i_ecc = Input(UInt(eccBits.W))
@@ -142,7 +147,7 @@ class HammingSecdedDecoder(dataBits: Int) extends ExtModule {
     val o_ce = Output(Bool())
     val o_ue = Output(Bool())
   })
-  private val modName = s"${GlobalData.prefix}HammingSecdedDecoder$dataBits"
+  private val modName = s"${GlobalData.prefix}HammingSecdedDecoder"
   override val desiredName = modName
   setInline(s"$modName.sv",
     s"""// Hamming SECDED Decoder — parameterized, self-contained SystemVerilog
@@ -159,13 +164,14 @@ class HammingSecdedDecoder(dataBits: Int) extends ExtModule {
        |//      → find which data bit maps to that position and flip it
        |//
        |module $modName #(
-       |  parameter int DATA_BITS = $dataBits
+       |  parameter int DATA_BITS = 64,
+       |  parameter int ECC_BITS  = 7
        |)(
-       |  input  logic [DATA_BITS-1:0]          i_data,
-       |  input  logic [${eccBits - 1}:0]       i_ecc,   // {overall_parity, syndrome}
-       |  output logic [DATA_BITS-1:0]          o_data,
-       |  output logic                          o_ce,    // correctable error (single-bit)
-       |  output logic                          o_ue     // uncorrectable error (double-bit)
+       |  input  logic [DATA_BITS-1:0] i_data,
+       |  input  logic [ECC_BITS-1:0]  i_ecc,   // {overall_parity, syndrome}
+       |  output logic [DATA_BITS-1:0] o_data,
+       |  output logic                 o_ce,    // correctable error (single-bit)
+       |  output logic                 o_ue     // uncorrectable error (double-bit)
        |);
        |
        |  // Same helper functions as encoder (duplicated for standalone use)
