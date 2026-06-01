@@ -60,28 +60,16 @@ class HammingSecdedEncoder(dataBits: Int, eccBits:Int) extends ExtModule(Map(
        |//
        |module $modName #(
        |  parameter int DATA_BITS = 64,
-       |  parameter int ECC_BITS  = 7
+       |  parameter int ECC_BITS  = 8
        |)(
        |  input  logic [DATA_BITS-1:0]      i_data,
        |  output logic [ECC_BITS-1:0]       o_ecc   // {overall_parity, syndrome}
        |);
        |
-       |  // ---------------------------------------------------------------
-       |  // Step 1: Calculate how many parity bits we need.
-       |  //         We need r such that 2^r >= DATA_BITS + r + 1.
-       |  //         Total ECC bits = parity bits + 1 (overall parity) = ECC_BITS
-       |  // ---------------------------------------------------------------
-       |  function automatic int calc_parity_bits(int d);
-       |    int r;
-       |    r = 0;
-       |    while ((1 << r) < d + r + 1) r = r + 1;
-       |    return r;
-       |  endfunction
-       |
-       |  localparam int PARITY_BITS = calc_parity_bits(DATA_BITS);
+       |  localparam int PARITY_BITS = ECC_BITS - 1;
        |
        |  // ---------------------------------------------------------------
-       |  // Step 2: Map data index to Hamming codeword position.
+       |  // Step 1: Map data index to Hamming codeword position.
        |  //         Codeword positions start at 1. Power-of-2 positions
        |  //         (1, 2, 4, 8, ...) are reserved for parity bits.
        |  //         Data bits fill the remaining positions in order.
@@ -105,7 +93,7 @@ class HammingSecdedEncoder(dataBits: Int, eccBits:Int) extends ExtModule(Map(
        |  endfunction
        |
        |  // ---------------------------------------------------------------
-       |  // Step 3: Compute parity (syndrome) bits.
+       |  // Step 2: Compute parity (syndrome) bits.
        |  //         For each parity bit k (0..PARITY_BITS-1):
        |  //           syndrome[k] = XOR of all data bits whose codeword
        |  //                         position has bit k set.
@@ -165,7 +153,7 @@ class HammingSecdedDecoder(dataBits: Int, eccBits:Int) extends ExtModule(Map(
        |//
        |module $modName #(
        |  parameter int DATA_BITS = 64,
-       |  parameter int ECC_BITS  = 7
+       |  parameter int ECC_BITS  = 8
        |)(
        |  input  logic [DATA_BITS-1:0] i_data,
        |  input  logic [ECC_BITS-1:0]  i_ecc,   // {overall_parity, syndrome}
@@ -174,15 +162,7 @@ class HammingSecdedDecoder(dataBits: Int, eccBits:Int) extends ExtModule(Map(
        |  output logic                 o_ue     // uncorrectable error (double-bit)
        |);
        |
-       |  // Same helper functions as encoder (duplicated for standalone use)
-       |  function automatic int calc_parity_bits(int d);
-       |    int r;
-       |    r = 0;
-       |    while ((1 << r) < d + r + 1) r = r + 1;
-       |    return r;
-       |  endfunction
-       |
-       |  localparam int PARITY_BITS = calc_parity_bits(DATA_BITS);
+       |  localparam int PARITY_BITS = ECC_BITS - 1;
        |
        |  function automatic int data_pos(int idx);
        |    int pos, count;
