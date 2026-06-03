@@ -368,4 +368,41 @@ class SRAMTemplate[T <: Data](
   when(io.w.req.valid) {
     assert(io.w.req.bits.setIdx < set.U, cf"Illegal write addr 0x${io.w.req.bits.setIdx}%x on SRAM, max addr is 0x${(set - 1).toHexString}")
   }
+
+  private val sramCatIn = Cat(ramRaddr, renStretched, ramWaddr, ramWdata, ramWmask, wenStretched)
+  private val sva_ischk = Option.when(setup > 1)(Module(new SetupMulticycleAssert(sramCatIn.getWidth, setup)))
+  private val sva_ihchk = Option.when(extraHold)(Module(new HoldMulticycleAssert(sramCatIn.getWidth)))
+  private val sva_oschk = Option.when(latency > 1)(Module(new SetupMulticycleAssert(dataWidth, latency)))
+  private val sva_olchk = Option.when(latency > 1)(Module(new LatencyAssert(latency)))
+  private val sva_eichk = Option.when(interval > 1)(Module(new EventIntervalAssert(interval)))
+
+  sva_ischk.foreach(m => {
+    m.io.i_clk := clock
+    m.io.i_rst := reset
+    m.io.i_con := icg.E
+    m.io.i_dat := sramCatIn
+  })
+  sva_ihchk.foreach(m => {
+    m.io.i_clk := clock
+    m.io.i_rst := reset
+    m.io.i_con := icg.E
+    m.io.i_dat := sramCatIn
+  })
+  sva_oschk.foreach(m => {
+    m.io.i_clk := clock
+    m.io.i_rst := reset
+    m.io.i_con := io.r.resp.valid
+    m.io.i_dat := ramRdata
+  })
+  sva_olchk.foreach(m => {
+    m.io.i_clk := clock
+    m.io.i_rst := reset
+    m.io.i_con := ckRen
+    m.io.i_dat := io.r.resp.valid
+  })
+  sva_eichk.foreach(m => {
+    m.io.i_clk := clock
+    m.io.i_rst := reset
+    m.io.i_evt := icg.E
+  })
 }
