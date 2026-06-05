@@ -8,5 +8,8 @@ package object utils {
   type MimoQueue[T <: Data] = _root_.xs.utils.queue.MimoQueue[T]
   type OverrideableQueue[T <: Data] = _root_.xs.utils.queue.OverrideableQueue[T]
   type HasCircularQueuePtrHelper = _root_.xs.utils.queue.HasCircularQueuePtrHelper
+
+  class ClockGate extends xs.utils.verilog.ClockGate
+  val ClockGate = xs.utils.verilog.ClockGate
   val PerfCCT = xs.utils.perf.TaggedTrace
 }
