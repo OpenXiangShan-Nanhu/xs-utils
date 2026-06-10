@@ -372,7 +372,7 @@ class SRAMTemplate[T <: Data](
   private val sramCatIn = Cat(ramRaddr, renStretched, ramWaddr, ramWdata, ramWmask, wenStretched)
   private val sva_ischk = Option.when(setup > 1)(Module(new SetupMulticycleAssert(sramCatIn.getWidth, setup)))
   private val sva_ihchk = Option.when(extraHold)(Module(new HoldMulticycleAssert(sramCatIn.getWidth)))
-  private val sva_oschk = Option.when(latency > 1)(Module(new SetupMulticycleAssert(dataWidth, latency)))
+  private val sva_oschk = Option.when(latency > 1)(Module(new SetupMulticycleAssert(dataWidth, latency, "BYPASS_CLOCKGATE")))
   private val sva_olchk = Option.when(latency > 1)(Module(new LatencyAssert(latency)))
   private val sva_eichk = Option.when(interval > 1)(Module(new EventIntervalAssert(interval)))
 

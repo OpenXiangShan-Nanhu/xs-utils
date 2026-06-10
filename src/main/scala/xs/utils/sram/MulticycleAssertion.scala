@@ -3,7 +3,7 @@ package xs.utils.sram
 import chisel3._
 import xs.utils.GlobalData
 
-class SetupMulticycleAssert(D:Int, S:Int) extends ExtModule(Map(
+class SetupMulticycleAssert(D:Int, S:Int, DISABLE_MACRO:String = "") extends ExtModule(Map(
   "D" -> D
 )) {
   val io = FlatIO(new Bundle {
@@ -13,7 +13,7 @@ class SetupMulticycleAssert(D:Int, S:Int) extends ExtModule(Map(
     val i_con = Input(Bool())
   })
   require(S > 1)
-  private val modName = s"${GlobalData.prefix}_SVA_SetupMulticycle$S"
+  private val modName = s"${GlobalData.prefix}_SVA_SetupMulticycle$S$DISABLE_MACRO"
   override val desiredName = modName
 
   private val mcpChkStr = Seq.tabulate(S - 1)(i => s"i_dat === $$past(i_dat, ${i + 1})").mkString("(", " && ", ");")
@@ -28,6 +28,7 @@ class SetupMulticycleAssert(D:Int, S:Int) extends ExtModule(Map(
        |  input wire         i_con,
        |  input wire [D-1:0] i_dat
        |);
+       |${if(DISABLE_MACRO.nonEmpty) s"`ifndef $DISABLE_MACRO" else "" }
        |`ifndef VERILATOR
        |  property setup_multicycle_${S};
        |    @(posedge i_clk) disable iff(i_rst)
@@ -39,6 +40,7 @@ class SetupMulticycleAssert(D:Int, S:Int) extends ExtModule(Map(
        |    $$fatal;
        |  end
        |`endif
+       |${if(DISABLE_MACRO.nonEmpty) s"`endif" else "" }
        |endmodule""".stripMargin)
 }
 
