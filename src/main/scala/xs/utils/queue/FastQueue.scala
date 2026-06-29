@@ -56,8 +56,8 @@ class FastQueue[T <: Data](gen:T, size:Int, deqDataNoX:Boolean = false) extends 
   }
   assert(PopCount(waterline) === 1.U)
 
-  io.count   := Mux1H(Seq.tabulate(size + 1)(i => (waterline(i), i.U)))
-  io.freeNum := Mux1H(Seq.tabulate(size + 1)(i => (waterline(i), (size - i).U)))
+  io.count   := OHToUInt(waterline)
+  io.freeNum := OHToUInt(Reverse(waterline))
 }
 
 object FastQueueRaw {
