@@ -45,7 +45,7 @@ end)
 task("idea", function()
   on_run(function()
     if os.host() == "windows" then
-      os.execv(os.shell(), { "mill", "-i", "mill.idea.GenIdea/idea" })
+      os.execv("powershell", { "mill", "-i", "mill.idea.GenIdea/idea" })
     else
       os.execv("mill", { "-i", "mill.idea.GenIdea/idea" })
     end
@@ -58,8 +58,8 @@ end)
 task("comp", function()
   on_run(function()
     if os.host() == "windows" then
-      os.execv(os.shell(), {"mill", "compile"})
-      os.execv(os.shell(), {"mill", "test.compile"})
+      os.execv("powershell", {"mill", "compile"})
+      os.execv("powershell", {"mill", "test.compile"})
     else
       os.execv("mill", {"compile"})
       os.execv("mill", {"test.compile"})
