@@ -56,20 +56,22 @@ class SramArray(
   @public val W0 = if(!singlePort) Some(IO(new DpRamWIO(width, maskSegments, depth))) else None
   @public val RW0_clk = IO(Input(Clock()))
 
+  private val halt = pwctl.map(e => e.asUInt.orR).getOrElse(false.B)
+
   private val mem = Module(new SramInstGen(singlePort, width, maskSegments, depth, delayRead))
   mem.io.RW0.foreach(rw => {
     rw <> RW0.get
-    rw.en := RW0.get.en
+    rw.en := RW0.get.en && !halt
     RW0.get.rdata := rw.rdata
   })
   mem.io.R0.foreach(r => {
     r <> R0.get
-    r.en := R0.get.en
+    r.en := R0.get.en && !halt
     R0.get.data := r.data
   })
   mem.io.W0.foreach(w => {
     w <> W0.get
-    w.en := W0.get.en
+    w.en := W0.get.en && !halt
   })
   mem.io.RW0_clk := RW0_clk
 
