@@ -48,15 +48,15 @@ object PriorityEncoderOneHotHigh {
     enc.io.o_code
   }
 
-  def apply(ins: Seq[Bool]):Seq[Bool] = {
+  def apply(ins: Seq[Bool]):UInt = {
     val enc = Module(new PriorityEncoderOneHotHigh(ins.size))
     enc.io.i_data := Cat(ins.reverse)
-    enc.io.o_code.asBools
+    enc.io.o_code
   }
 
-  def apply(inv:Vec[Bool]):Vec[Bool] = {
+  def apply(inv:Vec[Bool]):UInt = {
     val enc = Module(new PriorityEncoderOneHotHigh(inv.size))
     enc.io.i_data := inv.asUInt
-    VecInit(enc.io.o_code.asBools)
+    enc.io.o_code
   }
 }
