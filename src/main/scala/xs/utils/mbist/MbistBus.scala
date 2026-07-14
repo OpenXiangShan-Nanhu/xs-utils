@@ -35,8 +35,8 @@ case class MbistBusParams(
   hasDualPort: Boolean,
   domainName:  String = "Unknown"
 ) {
-  val arrayWidth = log2Up(array + 1)
-  val addrWidth = log2Up(set + 1)
+  val arrayWidth = log2Ceil(array + 1)
+  val addrWidth = log2Ceil(set)
 }
 
 class MbistBus(val params: MbistBusParams) extends MbistCommonBundle() {
