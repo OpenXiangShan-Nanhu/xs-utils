@@ -75,8 +75,8 @@ case class Ram2MbistParams(
   val maxArrayId = sramParams.mbistArrayIds.max
   val nodeNum = sramParams.mbistNodeNum
   val bitWrite = sramParams.bitWrite
-  val addrWidth = log2Up(set + 1)
-  val arrayWidth = log2Up(maxArrayId + 1)
+  val addrWidth = log2Ceil(set)
+  val arrayWidth = log2Ceil(maxArrayId + 1)
 
   def getAllNodesParams(): Seq[Ram2MbistParams] = {
     val res = Seq.tabulate(nodeNum)(idx => {
