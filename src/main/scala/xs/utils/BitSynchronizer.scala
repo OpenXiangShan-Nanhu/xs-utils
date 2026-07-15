@@ -13,12 +13,12 @@ class BitSynchronizer(stage: Int = 3, init: Option[Bool] = None) extends Module 
     Seq.fill(stage)(Reg(Bool()))
   }
   private def conn(a: Bool, b: Bool): Bool = {
-    a := b
-    a
+    b := a
+    b
   }
-  sync_regs.foldRight(io.in)(conn)
+  sync_regs.foldLeft(io.in)(conn)
   sync_regs.zipWithIndex.foreach({ case (s, i) => s.suggestName(s"sync_$i") })
-  io.out := sync_regs.head
+  io.out := sync_regs.last
 }
 
 object BitSynchronizer {
