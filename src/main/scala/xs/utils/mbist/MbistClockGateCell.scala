@@ -1,7 +1,7 @@
 package xs.utils.mbist
 
 import chisel3._
-import xs.utils.verilog.ClockGate
+import xs.utils.verilog.{ClockGate, ClockMux}
 import xs.utils.sram.SramBroadcastBundle
 
 class CgDftBundle extends Bundle {
@@ -27,8 +27,12 @@ class MbistClockGateCell(mcpCtl:Boolean) extends Module {
   CG.io.CK := clock
 
   if(mcpCtl) {
+    val CM = Module(new ClockMux)
+    CM.io.S  := dft.ram_aux_ckbp
+    CM.io.I0 := CG.io.Q
+    CM.io.I1 := dft.ram_aux_clk.asClock
     CG.io.E := E && !dft.ram_mcp_hold
-    out_clock := Mux(dft.ram_aux_ckbp, dft.ram_aux_clk.asClock, CG.io.Q)
+    out_clock := CM.io.O
   } else {
     CG.io.E := E
     out_clock := CG.io.Q
