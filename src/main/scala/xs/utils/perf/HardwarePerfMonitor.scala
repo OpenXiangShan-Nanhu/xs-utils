@@ -59,30 +59,10 @@ class HPerfCounter(val numPCnt: Int)(implicit p: Parameters) extends Module with
     val events_sets = Input(Vec(numPCnt, new PerfEvent))
   })
 
+  // Only use the lower 10 bits of hpm_event as the event selector.
+  // Higher bits (multi-event select / combine ops) are ignored.
   val eventsMap = io.events_sets.map(event => (event.id, event.value))
-  val events_incr_0 = RegNext(MuxLookup(io.hpm_event( 9,  0), 0.U)(eventsMap))
-  val events_incr_1 = RegNext(MuxLookup(io.hpm_event(19, 10), 0.U)(eventsMap))
-  val events_incr_2 = RegNext(MuxLookup(io.hpm_event(29, 20), 0.U)(eventsMap))
-  val events_incr_3 = RegNext(MuxLookup(io.hpm_event(39, 30), 0.U)(eventsMap))
-
-  val event_op_0 = RegNext(io.hpm_event(44, 40))
-  val event_op_1 = RegNext(io.hpm_event(49, 45))
-  val event_op_2 = RegNext(io.hpm_event(54, 50))
-
-  def combineEvents(cnt_1: UInt, cnt_2: UInt, optype: UInt): UInt =
-    Mux(optype(0), cnt_1 & cnt_2,
-    Mux(optype(1), cnt_1 ^ cnt_2,
-    Mux(optype(2), cnt_1 + cnt_2,
-                   cnt_1 | cnt_2)))
-
-  val event_step_0 = combineEvents(events_incr_0, events_incr_1, event_op_0)
-  val event_step_1 = combineEvents(events_incr_2, events_incr_3, event_op_1)
-
-  // add registers to optimize the timing (like pipelines)
-  val event_op_2_reg = RegNext(event_op_2)
-  val event_step_0_reg = RegNext(event_step_0)
-  val event_step_1_reg = RegNext(event_step_1)
-  val selected = combineEvents(event_step_0_reg, event_step_1_reg, event_op_2_reg)
+  val selected = RegNext(MuxLookup(io.hpm_event(9, 0), 0.U)(eventsMap))
 
   val perfEvents = Seq(("selected", selected))
   generatePerfEvent()
