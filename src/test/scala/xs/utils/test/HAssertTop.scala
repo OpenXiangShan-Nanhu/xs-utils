@@ -15,7 +15,7 @@ import xs.utils.debug.{HAssert, HardwareAssertionKey, HwaParams}
 
 object ModAHelper {
   def xor(in0:Bool, in1:Bool)(implicit p: Parameters, s: SourceInfo):Unit = {
-    HAssert(in0 ^ in1, cf"assert xor ${in0}%x ^ ${in1}%x")(p, s)
+    HAssert(in0 ^ in1, "ModA XOR result was false", cf"in0=${in0}%x, in1=${in1}%x")(p, s)
   }
 }
 
@@ -27,8 +27,8 @@ class ModA(implicit p:Parameters) extends Module {
     val d = Input(Bool())
     val z = Output(Bool())
   })
-  HAssert(io.a, cf"assert A ${io.a}%x")
-  HAssert(io.b, cf"assert B ${io.a}%x")
+  HAssert(io.a, "ModA input A was false", cf"a=${io.a}%x")
+  HAssert(io.b, "ModA input B was false", cf"b=${io.b}%x")
   ModAHelper.xor(io.a, io.b)
   ModAHelper.xor(io.c, io.d)
   when(io.a) {
@@ -50,10 +50,10 @@ class ModB(implicit p:Parameters) extends Module {
   io.aout <> VipArbiter(io.ain)
 
   when(io.aout.fire) {
-    HAssert(io.ain(0).fire || io.ain(1).fire)
+    HAssert(io.ain(0).fire || io.ain(1).fire, "ModB output fired without an input transfer")
   }
   when(io.aout.fire) {
-    HAssert(io.aout.bits === io.ain(0).bits || io.aout.bits === io.ain(1).bits)
+    HAssert(io.aout.bits === io.ain(0).bits || io.aout.bits === io.ain(1).bits, "ModB output data did not match either input")
   }
   HAssert.placePipe(1, name = "ModBPipe")
   @public val hwa = HAssert.exportIO
@@ -99,7 +99,7 @@ class HAssertTest extends Module {
   HAssert.placePipe(1, name = "ModA")
 
   private val top = HAssert.placePipe(2, moduleTop = true, name = "HAssertTop")
-  HAssert.release(top, "hwa", "test")
+  HAssert.release(top, "hwa", "test", Seq("TEST"))
 
   io.hwa.foreach(hwa => hwa <> top.get.head.bus.get)
 }
