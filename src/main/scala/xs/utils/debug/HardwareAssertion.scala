@@ -9,6 +9,7 @@ import chisel3.experimental.{CheckBoring, EscapedWire, SourceInfo, SourceLine, S
 import org.chipsalliance.cde.config.{Field, Parameters}
 import xs.utils.queue.FastQueue
 
+import java.nio.file.Paths
 import scala.collection.mutable
 
 case object HardwareAssertionKey extends Field[HwaParams]
@@ -26,8 +27,20 @@ class HAssertBundle(val node: HAssertNode)(implicit p:Parameters) extends Bundle
   val bus = Option.when(!node.point)(Decoupled(UInt(hwaP.maxInfoBits.W)))
 }
 
+case class HAssertDesc(
+  id: Int,
+  hardDesc: String,
+  file: String,
+  line: Int,
+  column: Int
+) extends IsLookupable {
+  def withId(newId: Int): HAssertDesc = copy(id = newId)
+  def identity: (String, String, Int, Int) = (hardDesc, file, line, column)
+  def location: String = s"$file:$line:$column"
+}
+
 case class HAssertNode(
-  desc: Seq[(Int, String)] = Seq(),
+  desc: Seq[HAssertDesc] = Seq(),
   level: Int = 0,
   point: Boolean = false,
   name: String = ""
@@ -38,14 +51,26 @@ class HAssertHub(level:Int)(implicit p:Parameters) extends Module {
 }
 
 object HAssert {
-  def apply(cond:Bool, desc:Printable)(implicit p: Parameters, s: SourceInfo):Unit = HardwareAssertion(cond, desc)(p, s)
-  def apply(cond:Bool)(implicit p: Parameters, s: SourceInfo):Unit = HardwareAssertion(cond)(p, s)
-  def withEn(cond: Bool, en: Bool, desc: Printable)(implicit p: Parameters, s: SourceInfo): Unit = HardwareAssertion.withEn(cond, en, desc)(p ,s)
-  def withEn(cond: Bool, en: Bool)(implicit p: Parameters, s: SourceInfo): Unit = HardwareAssertion.withEn(cond, en)(p ,s)
-  def checkTimeout(clear: Bool, timeout: Int, desc: Printable)(implicit p: Parameters, s: SourceInfo): Unit = HardwareAssertion.checkTimeout(clear, timeout, desc)(p, s)
-  def checkTimeout(clear: Bool, timeout: Int)(implicit p: Parameters, s: SourceInfo): Unit = HardwareAssertion.checkTimeout(clear, timeout)(p, s)
-  def placePipe(level: Int, moduleTop: Boolean = false, name:String = "")(implicit p: Parameters): Option[Seq[HAssertBundle]] = HardwareAssertion.placePipe(level, moduleTop, name)
-  def release(node: Option[Seq[HAssertBundle]], dir: String, pfx: String = "")(implicit p: Parameters): Unit = HardwareAssertion.release(node, dir, pfx)
+  def apply(cond: Bool, hardDesc: String)(implicit p: Parameters, s: SourceInfo): Unit =
+    HardwareAssertion(cond, hardDesc)(p, s)
+  def apply(cond: Bool, hardDesc: String, softDesc: Printable)(implicit p: Parameters, s: SourceInfo): Unit =
+    HardwareAssertion(cond, hardDesc, softDesc)(p, s)
+  def withEn(cond: Bool, en: Bool, hardDesc: String)(implicit p: Parameters, s: SourceInfo): Unit =
+    HardwareAssertion.withEn(cond, en, hardDesc)(p, s)
+  def withEn(cond: Bool, en: Bool, hardDesc: String, softDesc: Printable)(implicit p: Parameters, s: SourceInfo): Unit =
+    HardwareAssertion.withEn(cond, en, hardDesc, softDesc)(p, s)
+  def checkTimeout(clear: Bool, timeout: Int, hardDesc: String)(implicit p: Parameters, s: SourceInfo): Bool =
+    HardwareAssertion.checkTimeout(clear, timeout, hardDesc)(p, s)
+  def checkTimeout(clear: Bool, timeout: Int, hardDesc: String, softDesc: Printable)(
+    implicit p: Parameters,
+    s: SourceInfo
+  ): Bool = HardwareAssertion.checkTimeout(clear, timeout, hardDesc, softDesc)(p, s)
+  def placePipe(level: Int, moduleTop: Boolean = false, name:String = "")(
+    implicit p: Parameters
+  ): Option[Seq[HAssertBundle]] = HardwareAssertion.placePipe(level, moduleTop, name)
+  def release(node: Option[Seq[HAssertBundle]], dir: String, pfx: String, runtimeSourceTypes: Seq[String])(
+    implicit p: Parameters
+  ): Unit = HardwareAssertion.release(node, dir, pfx, runtimeSourceTypes)
   def fromIO(buses:Option[MixedVec[HAssertBundle]])(implicit p: Parameters):Unit = HardwareAssertion.fromIO(buses)
   def exportIO(implicit p: Parameters): Option[MixedVec[HAssertBundle]] = HardwareAssertion.exportIO
 
@@ -61,21 +86,83 @@ object HardwareAssertion {
   private var hwaSeq = Seq[HAssertBundle]()
 
   private val hashToCountMap = mutable.Map[String, Int]()
+  private type ImportSignature = Vector[(Int, String, Vector[HAssertDesc])]
+  private val importedLayoutOffsets = new java.util.IdentityHashMap[AnyRef, mutable.Map[ImportSignature, Int]]()
 
-  private def extractStr(pt:Printable): String = {
-    pt match {
-      case Printables(pts) => pts.map(extractStr).reduce(_ + _)
-      case PString(str) => str
-      case _ => ""
+  private case class ManifestRef(
+    producer: String,
+    runtimeSourceTypes: Seq[String],
+    file: String,
+    assertionCount: Int,
+    idWidth: Int
+  )
+  private val releasedManifests = mutable.Map[String, ManifestRef]()
+  private var renderedCatalog: Option[String] = None
+
+  def getHwaSeq: Seq[HAssertBundle] = hwaSeq
+
+  private def normalizeSourcePath(filename: String): String = {
+    val source = Paths.get(filename).toAbsolutePath.normalize()
+    val root = sys.env
+      .get("ZHUJIANG_SOURCE_ROOT")
+      .map(Paths.get(_).toAbsolutePath.normalize())
+      .getOrElse(Paths.get("").toAbsolutePath.normalize())
+    require(source.startsWith(root), s"HAssert source $source is outside source root $root")
+    root.relativize(source).toString.replace('\\', '/')
+  }
+
+  private def sourceDesc(hardDesc: String, s: SourceInfo): HAssertDesc = {
+    require(hardDesc.trim.nonEmpty, "HAssert hardDesc must be non-empty")
+    s match {
+      case SourceLine(filename, line, col) =>
+        HAssertDesc(0, hardDesc.trim, normalizeSourcePath(filename), line, col)
+      case _ => throw new IllegalArgumentException(s"HAssert $hardDesc requires source line information")
     }
   }
 
-  def getHwaSeq: Seq[HAssertBundle] = hwaSeq
+  private def simulationDesc(desc: HAssertDesc, softDesc: Option[Printable]): Printable = {
+    val hard = PString(s"Hardware error: ${desc.hardDesc}\nLocation: ${desc.location}")
+    softDesc match {
+      case Some(soft) => hard + PString("\nDebug context: ") + soft
+      case None => hard
+    }
+  }
+
+  private def dedupDesc(desc: Seq[HAssertDesc]): Seq[HAssertDesc] = {
+    desc.groupBy(_.id).toSeq.sortBy(_._1).map { case (id, entries) =>
+      val metadata = entries.map(e => (e.hardDesc, e.file, e.line, e.column)).distinct
+      require(metadata.size == 1, s"hwa id $id maps to multiple descriptions: ${metadata.mkString(", ")}")
+      entries.head
+    }
+  }
+
+  private def importSignature(buses: Seq[HAssertBundle]): ImportSignature = {
+    buses.map(b => (b.node.level, b.node.name, dedupDesc(b.node.desc).toVector)).toVector
+  }
+
+  private def importOffset(buses: Seq[HAssertBundle]): Int = {
+    val scope = Module.currentModule.getOrElse(
+      throw new IllegalStateException("HAssert.fromIO must be called inside a module")
+    )
+    val scopeOffsets = Option(importedLayoutOffsets.get(scope)).getOrElse {
+      val offsets = mutable.Map[ImportSignature, Int]()
+      importedLayoutOffsets.put(scope, offsets)
+      offsets
+    }
+    val signature = importSignature(buses)
+    scopeOffsets.getOrElseUpdate(signature, {
+      val allIds = buses.flatMap(_.node.desc.map(_.id))
+      val offset = gid - allIds.min
+      val add = allIds.max + 1 - allIds.min
+      gid = gid + add
+      offset
+    })
+  }
 
   private def squashPoints(pts: Seq[HAssertBundle])(implicit p: Parameters): Seq[HAssertBundle] = {
     val hwaP = p(HardwareAssertionKey)
     pts.foreach(pp => require(pp.node.level == 0))
-    pts.groupBy(_.node.desc.head._2).map({case(desc, ns) =>
+    pts.groupBy(_.node.desc.head.identity).toSeq.sortBy(_._1).map({case(_, ns) =>
       val asrtCnt = RegInit(hwaP.maxAssertRepeatNum.U(log2Ceil(hwaP.maxAssertRepeatNum + 1).W))
       val asrtVlds = ns.map(n => {
         val bore = BoringUtils.bore(n)
@@ -86,7 +173,7 @@ object HardwareAssertion {
           RegNext(bore.bus.get.valid, false.B)
         }
       })
-      val newNode = HAssertNode(desc = Seq((gid, desc)), name = ns.head.node.name)
+      val newNode = HAssertNode(desc = Seq(ns.head.node.desc.head.withId(gid)), name = ns.head.node.name)
       val squashCond = Wire(new HAssertBundle(newNode))
       squashCond.bus.get.valid := Cat(asrtVlds).orR && asrtCnt.orR
       squashCond.bus.get.bits := gid.U
@@ -98,39 +185,38 @@ object HardwareAssertion {
     }).toSeq
   }
 
-  private def genDescStr(desc:Printable, s: SourceInfo):Printable = {
-    s match {
-      case SourceLine(filename, line, col) =>
-        val fn = filename.replaceAll("\\\\", "/")
-        cf"$fn:$line:$col: " + desc
-      case _ => desc
-    }
-  }
-
   /** Checks for a condition to be valid in the circuit at rising clock edge
    * when not in reset. If the condition evaluates to false, the circuit
    * simulation stops with an error. The assert id and user bits will be
-   * output to the module interface
+   * output to the module interface.
    *
    * @param cond condition, assertion fires (simulation fails) when false
-   * @param desc optional format string to print when the assertion fires
-   * @note desc must be defined as Printable(e.g. cf"xxx") to print chisel-type values
+   * @param hardDesc required static error description used by silicon debug metadata
+   * @param softDesc optional runtime context printed only by the simulation assertion
    */
-  def apply(cond:Bool, desc:Printable)(implicit p: Parameters, s: SourceInfo): Unit = {
-    val descStr = genDescStr(desc, s)
+  def apply(cond: Bool, hardDesc: String, softDesc: Printable)(implicit p: Parameters, s: SourceInfo): Unit =
+    applyImpl(cond, hardDesc, Some(softDesc))(p, s)
+
+  def apply(cond: Bool, hardDesc: String)(implicit p: Parameters, s: SourceInfo): Unit =
+    applyImpl(cond, hardDesc, None)(p, s)
+
+  private def applyImpl(cond: Bool, hardDesc: String, softDesc: Option[Printable])(
+    implicit p: Parameters,
+    s: SourceInfo
+  ): Unit = {
+    val metadata = sourceDesc(hardDesc, s)
     val assertCond = cond
-    assert(assertCond, descStr)(s)
+    assert(assertCond, simulationDesc(metadata, softDesc))(s)
     val hwaP = p(HardwareAssertionKey)
     if(hwaP.enable) {
-      val pdesc = extractStr(descStr)
-      val pdescShort = pdesc.split("\n").head
-      val hashCode = s"${pdesc.hashCode}"
+      val identity = s"${metadata.hardDesc}:${metadata.location}"
+      val hashCode = s"${identity.hashCode}"
       if(!hashToCountMap.contains(hashCode)) {
         hashToCountMap.addOne((hashCode, 0))
       }
       hashToCountMap(hashCode) = hashToCountMap(hashCode) + 1
       val pcode = s"${hashCode}_${hashToCountMap(hashCode) - 1}"
-      val node = HAssertNode(desc = Seq((0, pdescShort)), level = 0, point = true, pdescShort)
+      val node = HAssertNode(desc = Seq(metadata), level = 0, point = true, metadata.hardDesc)
       val thisCond = EscapedWire(new HAssertBundle(node))
       thisCond.cond.get := !assertCond
       thisCond.suggestName(s"hwa_$pcode")
@@ -138,30 +224,25 @@ object HardwareAssertion {
       hwaSeq = hwaSeq :+ thisCond
     }
   }
-  def apply(cond: Bool)(implicit p: Parameters, s: SourceInfo): Unit = apply(cond, "")(p, s)
 
-  /** Apply an assertion in the hardware design with an enable signal.
-   *
-   * @param cond condition, assertion fires (simulation fails) when false
-   * @param en   enable signal for the assertion
-   * @param desc optional format string to print when the assertion fires
-   * @note desc must be defined as Printable(e.g. cf"xxx") to print chisel-type values
-   */
-  def withEn(cond: Bool, en: Bool, desc: Printable)(implicit p: Parameters, s: SourceInfo): Unit = apply(Mux(en, cond, true.B), desc)(p ,s)
-  def withEn(cond: Bool, en: Bool)(implicit p: Parameters, s: SourceInfo): Unit = withEn(cond, en, "")(p ,s)
+  def withEn(cond: Bool, en: Bool, hardDesc: String, softDesc: Printable)(implicit p: Parameters, s: SourceInfo): Unit =
+    apply(Mux(en, cond, true.B), hardDesc, softDesc)(p, s)
 
-  /** Checks for timeout condition by counting cycles since last clear signal.
-   * If the counter reaches its maximum value (300_0000 cycles), the circuit
-   * simulation stops with an error. The assert id and user bits will be
-   * output to the module interface.
-   *
-   * @param clear   reset signal that clears the timeout counter when asserted
-   * @param timeout EDA assert max timeout value
-   * @param desc    optional format string to print when timeout occurs
-   * @note desc must be defined as Printable (e.g. cf"xxx") to print chisel-type values
-   * @note Default timeout threshold of 3,000,000 cycles corresponds to 1ms at 3GHz clock frequency
-   */
-  def checkTimeout(clear: Bool, timeout: Int, desc: Printable)(implicit p: Parameters, s: SourceInfo): Bool = {
+  def withEn(cond: Bool, en: Bool, hardDesc: String)(implicit p: Parameters, s: SourceInfo): Unit =
+    apply(Mux(en, cond, true.B), hardDesc)(p, s)
+
+  def checkTimeout(clear: Bool, timeout: Int, hardDesc: String, softDesc: Printable)(
+    implicit p: Parameters,
+    s: SourceInfo
+  ): Bool = checkTimeoutImpl(clear, timeout, hardDesc, Some(softDesc))(p, s)
+
+  def checkTimeout(clear: Bool, timeout: Int, hardDesc: String)(implicit p: Parameters, s: SourceInfo): Bool =
+    checkTimeoutImpl(clear, timeout, hardDesc, None)(p, s)
+
+  private def checkTimeoutImpl(clear: Bool, timeout: Int, hardDesc: String, softDesc: Option[Printable])(
+    implicit p: Parameters,
+    s: SourceInfo
+  ): Bool = {
     val to_val = 0x1L << log2Ceil(3_000_000)
     require(timeout <= to_val)
     val to_cnt = Reg(UInt(log2Ceil(to_val + 1).W))
@@ -170,17 +251,18 @@ object HardwareAssertion {
     }
     val eda_err = to_cnt >= timeout.U
     val hwa_err = to_cnt >= to_val.U
-    val descStr = genDescStr(desc, s)
-    assert(!eda_err, descStr)
-    apply(!hwa_err, desc)(p, s)
+    val metadata = sourceDesc(hardDesc, s)
+    assert(!eda_err, simulationDesc(metadata, softDesc))
+    softDesc match {
+      case Some(desc) => apply(!hwa_err, hardDesc, desc)(p, s)
+      case None => apply(!hwa_err, hardDesc)(p, s)
+    }
     eda_err
   }
 
-  def checkTimeout(clear: Bool, timeout: Int)(implicit p: Parameters, s: SourceInfo): Bool = {
-    checkTimeout(clear, timeout, cf"timeout!")(p, s)
-  }
-
-  def placePipe(level: Int, moduleTop: Boolean = false, name:String = "")(implicit p: Parameters): Option[Seq[HAssertBundle]] = {
+  def placePipe(level: Int, moduleTop: Boolean = false, name:String = "")(
+    implicit p: Parameters
+  ): Option[Seq[HAssertBundle]] = {
     if(p(HardwareAssertionKey).enable && hwaSeq.count(_.node.level < level) != 0) {
       val candidates = hwaSeq.filter(h => h.node.level < level && CheckBoring(h))
       val children = candidates.filterNot(_.node.level == 0) ++ squashPoints(candidates.filter(_.node.level == 0))
@@ -191,7 +273,7 @@ object HardwareAssertion {
       val childrenSegSeq = children.grouped(segLen).toSeq
       require(nrPipe == childrenSegSeq.size)
       val res = for(cs <- childrenSegSeq) yield {
-        val hwa_n = HAssertNode(desc = cs.flatMap(_.node.desc), level = level, name = name)
+        val hwa_n = HAssertNode(desc = dedupDesc(cs.flatMap(_.node.desc)), level = level, name = name)
         val hwa_out = Wire(new HAssertBundle(hwa_n))
         if(cs.size > 1) {
           val hwa_arb = Module(new ResetRRArbiter(gen = UInt(width.W), n = cs.size))
@@ -214,6 +296,7 @@ object HardwareAssertion {
       } else {
         gid = 0
         hashToCountMap.clear()
+        importedLayoutOffsets.clear()
       }
       Some(res)
     } else {
@@ -226,12 +309,9 @@ object HardwareAssertion {
     val _impl = buses.isDefined && hwaP.enable
     if(_impl) {
       val _buses = buses.get
-      val allIds = _buses.flatMap(_.node.desc.map(_._1))
-      val offset = gid - allIds.min
-      val add = allIds.max + 1 - allIds.min
-      gid = gid + add
+      val offset = importOffset(_buses.toSeq)
       for(i <- _buses.indices) yield {
-        val _nd = _buses(i).node.desc.map(e => (e._1 + offset, e._2))
+        val _nd = _buses(i).node.desc.map(e => e.withId(e.id + offset))
         val _nn = HAssertNode(desc = _nd, level = _buses(i).node.level, name = s"${_buses(i).node.name}_ext")
         val hwa = Wire(new HAssertBundle(_nn))
         hwa <> _buses(i)
@@ -251,7 +331,7 @@ object HardwareAssertion {
         children.zip(_io).foreach({ case (a, b) =>
           b <> BoringUtils.bore(a)
         })
-        val allIds = children.flatMap(_.node.desc.map(_._1))
+        val allIds = children.flatMap(_.node.desc.map(_.id))
         val dec = allIds.max + 1 - allIds.min
         gid = gid - dec
         hwaSeq = hwaSeq.filterNot(CheckBoring(_))
@@ -264,14 +344,104 @@ object HardwareAssertion {
     }
   }
 
-  def release(as: Option[Seq[HAssertBundle]], dir: String, pfx: String = ""): Unit = {
+  private def jsonString(value: String): String = {
+    val escaped = value.flatMap {
+      case '"' => "\\\""
+      case '\\' => "\\\\"
+      case '\b' => "\\b"
+      case '\f' => "\\f"
+      case '\n' => "\\n"
+      case '\r' => "\\r"
+      case '\t' => "\\t"
+      case c if c < ' ' => f"\\u${c.toInt}%04x"
+      case c => c.toString
+    }
+    s"\"$escaped\""
+  }
+
+  private def renderManifest(
+    producer: String,
+    runtimeSourceTypes: Seq[String],
+    idWidth: Int,
+    desc: Seq[HAssertDesc]
+  ): String = {
+    val assertions = dedupDesc(desc)
+    val records = assertions.map { entry =>
+      val idHex = s"0x${entry.id.toHexString.reverse.padTo((idWidth + 3) / 4, '0').reverse}"
+      s"""    {
+         |      "id": ${entry.id},
+         |      "id_hex": ${jsonString(idHex)},
+         |      "hardware_message": ${jsonString(entry.hardDesc)}
+         |    }""".stripMargin
+    }.mkString(",\n")
+    val sources = runtimeSourceTypes.map(jsonString).mkString(", ")
+    s"""{
+       |  "schema": "zhujiang-hardware-assertions-v1",
+       |  "producer": ${jsonString(producer)},
+       |  "runtime_source_types": [$sources],
+       |  "id_width": $idWidth,
+       |  "assertion_count": ${assertions.size},
+       |  "assertions": [
+       |$records
+       |  ]
+       |}
+       |""".stripMargin
+  }
+
+  private def renderCatalog: String = {
+    if(releasedManifests.isEmpty) {
+      return renderedCatalog.getOrElse(throw new IllegalStateException("no HWA manifests were released"))
+    }
+    val refs = releasedManifests.values.toSeq.sortBy(_.producer).map { reference =>
+      val sources = reference.runtimeSourceTypes.map(jsonString).mkString(", ")
+      s"""    {
+         |      "producer": ${jsonString(reference.producer)},
+         |      "runtime_source_types": [$sources],
+         |      "file": ${jsonString(reference.file)},
+         |      "assertion_count": ${reference.assertionCount},
+         |      "id_width": ${reference.idWidth}
+         |    }""".stripMargin
+    }.mkString(",\n")
+    val catalog = s"""{
+       |  "schema": "zhujiang-hardware-assertion-catalog-v1",
+       |  "manifests": [
+       |$refs
+       |  ]
+       |}
+       |""".stripMargin
+    releasedManifests.clear()
+    renderedCatalog = Some(catalog)
+    catalog
+  }
+
+  def release(as: Option[Seq[HAssertBundle]], dir: String, pfx: String, runtimeSourceTypes: Seq[String])(
+    implicit p: Parameters
+  ): Unit = {
+    require(pfx.nonEmpty, "HAssert release producer must be non-empty")
+    require(runtimeSourceTypes.nonEmpty, s"HAssert release $pfx must declare at least one runtime source type")
     as.foreach(_.foreach(a => {
       hwaSeq = Nil
       gid = 0
-      val str = a.node.desc
-        .map(d => s"assertion ${d._1}: ${d._2}")
-        .reduce((a, b) => a + '\n' + b)
-      FileRegisters.add(dir, s"${pfx}_hardware_assertion.txt", str, dontCarePrefix = true)
+      val assertions = dedupDesc(a.node.desc)
+      val idWidth = p(HardwareAssertionKey).maxInfoBits
+      val manifestFile = s"$pfx-hardware-assertions.json"
+      val reference = ManifestRef(pfx, runtimeSourceTypes.distinct.sorted, manifestFile, assertions.size, idWidth)
+      releasedManifests.get(pfx).foreach { existing =>
+        require(existing == reference, s"conflicting HWA manifest for producer $pfx")
+      }
+      releasedManifests(pfx) = reference
+      renderedCatalog = None
+      FileRegisters.add(
+        dir,
+        manifestFile,
+        renderManifest(pfx, reference.runtimeSourceTypes, idWidth, assertions),
+        dontCarePrefix = true
+      )
+      val text = assertions.map(d => f"${d.id}%d | 0x${d.id}%04x | ${d.hardDesc}").mkString("\n") + "\n"
+      FileRegisters.add(dir, s"${pfx}_hardware_assertion.txt", text, dontCarePrefix = true)
+      if(!FileRegisters.contains("hardware-assertion-catalog.json")) {
+        FileRegisters.add(dir, "hardware-assertion-catalog.json", renderCatalog, dontCarePrefix = true)
+      }
     }))
   }
 }
