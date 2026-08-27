@@ -42,12 +42,12 @@ class SramResetGen(
     resetState := true.B
   }.elsewhen(io.wen) {
     resetCounter := Mux(resetCounter === 0.U, 0.U, resetCounter - 1.U)
-    resetState := resetCounter =/= 0.U
+    resetState := io.waddr =/= 0.U
   }
 
   io.wen := resetState && !resetHold(0) && intervalCounter === 0.U
   if(interval > 1) {
-    io.waddr := RegEnable(resetCounter, io.wen)
+    io.waddr := RegEnable(resetCounter, io.wen || resetHold(0))
     io.resetState := RegNext(resetState || intervalCounter.orR)
   } else {
     io.waddr := resetCounter

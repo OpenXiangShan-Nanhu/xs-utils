@@ -181,6 +181,7 @@ class SRAMTemplate[T <: Data](
     None
   }
   private val isc = if(extraHold) setup + 1 else setup // input steady cycles
+  private val interval = latency.max(isc)
   private val icg = Module(new MbistClockGateCell(isc > 1))
   private val dataWidth = gen.getWidth * way
   private val (mbistBd, array, vname) = SramHelper.genRam(
@@ -211,7 +212,7 @@ class SRAMTemplate[T <: Data](
 
   val extra_reset = if(extraReset) Some(IO(Input(Bool()))) else None
   if(shouldReset) {
-    val resetGen = Module(new SramResetGen(set = set, interval = isc, extraReset = extraReset))
+    val resetGen = Module(new SramResetGen(set = set, interval = interval, extraReset = extraReset))
     resetGen.clock := clock
     resetGen.reset := reset
     resetGen.io.extraRst.foreach(_ := extra_reset.get)
@@ -348,7 +349,7 @@ class SRAMTemplate[T <: Data](
   io.r.resp.valid := respReg(0)
   mbistBd.rdata := rdataReg
 
-  private val interval = latency.max(isc)
+
   private val intvCnt = RegInit(0.U(log2Ceil(interval + 1).W))
   when(ramRen || ramWen) {
     intvCnt := (interval - 1).U
