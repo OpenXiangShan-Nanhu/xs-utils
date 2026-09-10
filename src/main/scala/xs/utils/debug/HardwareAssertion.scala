@@ -9,7 +9,6 @@ import chisel3.experimental.{CheckBoring, EscapedWire, SourceInfo, SourceLine, S
 import org.chipsalliance.cde.config.{Field, Parameters}
 import xs.utils.queue.FastQueue
 
-import java.nio.file.Paths
 import scala.collection.mutable
 
 case object HardwareAssertionKey extends Field[HwaParams]
@@ -101,14 +100,25 @@ object HardwareAssertion {
 
   def getHwaSeq: Seq[HAssertBundle] = hwaSeq
 
-  private def normalizeSourcePath(filename: String): String = {
-    val source = Paths.get(filename).toAbsolutePath.normalize()
-    val root = sys.env
-      .get("ZHUJIANG_SOURCE_ROOT")
-      .map(Paths.get(_).toAbsolutePath.normalize())
-      .getOrElse(Paths.get("").toAbsolutePath.normalize())
-    require(source.startsWith(root), s"HAssert source $source is outside source root $root")
-    root.relativize(source).toString.replace('\\', '/')
+  private[debug] def normalizeSourcePath(filename: String): String = {
+    // SourceInfo in a precompiled JAR may refer to a different checkout or OS.
+    // Keep the source-set and package path, independent of the elaboration directory.
+    val path = filename.replace('\\', '/')
+    val parts = path.split('/').filterNot(part => part.isEmpty || part == ".")
+    val sourceRoot = parts.sliding(3).zipWithIndex.collect {
+      case (Array("src", scope, "scala"), index) if scope == "main" || scope == "test" => index
+    }.toSeq.lastOption
+    val relative = sourceRoot match {
+      case Some(index) => parts.drop(index)
+      case None =>
+        require(
+          !path.startsWith("/") && !path.matches("^[A-Za-z]:.*"),
+          s"HAssert source $filename must be relative or contain src/main/scala or src/test/scala"
+        )
+        parts
+    }
+    require(relative.nonEmpty && !relative.contains(".."), s"HAssert source $filename must have a stable relative path")
+    relative.mkString("/")
   }
 
   private def sourceDesc(hardDesc: String, s: SourceInfo): HAssertDesc = {
@@ -205,8 +215,9 @@ object HardwareAssertion {
     s: SourceInfo
   ): Unit = {
     val metadata = sourceDesc(hardDesc, s)
+    val source = SourceLine(metadata.file, metadata.line, metadata.column)
     val assertCond = cond
-    assert(assertCond, simulationDesc(metadata, softDesc))(s)
+    assert(assertCond, simulationDesc(metadata, softDesc))(source)
     val hwaP = p(HardwareAssertionKey)
     if(hwaP.enable) {
       val identity = s"${metadata.hardDesc}:${metadata.location}"
@@ -220,7 +231,7 @@ object HardwareAssertion {
       val thisCond = EscapedWire(new HAssertBundle(node))
       thisCond.cond.get := !assertCond
       thisCond.suggestName(s"hwa_$pcode")
-      SpecialWireInit(s, thisCond.cond.get, 0, prepend = true)
+      SpecialWireInit(source, thisCond.cond.get, 0, prepend = true)
       hwaSeq = hwaSeq :+ thisCond
     }
   }
@@ -252,7 +263,7 @@ object HardwareAssertion {
     val eda_err = to_cnt >= timeout.U
     val hwa_err = to_cnt >= to_val.U
     val metadata = sourceDesc(hardDesc, s)
-    assert(!eda_err, simulationDesc(metadata, softDesc))
+    assert(!eda_err, simulationDesc(metadata, softDesc))(SourceLine(metadata.file, metadata.line, metadata.column))
     softDesc match {
       case Some(desc) => apply(!hwa_err, hardDesc, desc)(p, s)
       case None => apply(!hwa_err, hardDesc)(p, s)
