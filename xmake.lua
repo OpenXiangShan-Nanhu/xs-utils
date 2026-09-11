@@ -57,15 +57,17 @@ end)
 
 task("comp", function()
   on_run(function()
+    os.cd(os.scriptdir())
     if os.host() == "windows" then
-      os.execv("powershell", {"mill", "compile"})
-      os.execv("powershell", {"mill", "test.compile"})
+      os.execv("powershell", {"-NoProfile", "-Command", "mill dist.jars; exit $LASTEXITCODE"})
     else
-      os.execv("mill", {"compile"})
-      os.execv("mill", {"test.compile"})
+      os.execv("mill", {"dist.jars"})
     end
   end)
-  set_menu {}
+  set_menu {
+    usage = "xmake comp",
+    description = "Package chisel.jar and chisel.pom into build"
+  }
 end)
 
 task("clean", function()

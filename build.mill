@@ -1,6 +1,7 @@
 package build
 import mill.*
 import scalalib.*
+import mill.scalalib.publish.*
 
 object v {
   val defaultScalaVersion = "2.13.18"
@@ -164,10 +165,6 @@ object `package` extends VersionSbtModule {
         override def scalacOptions = super.scalacOptions() ++ Seq(
           "-Xsource-features:case-apply-copy-access"
         )
-        def mvnDeps = Seq(
-          v.scalatest,
-          v.scalacheck
-        )
         def compileMvnDeps = Seq(v.unrollAnno)
         def scalacPluginMvnDeps = Seq(v.unrollPlugin)
       }
@@ -221,6 +218,158 @@ object `package` extends VersionSbtModule {
   override def moduleDeps = Seq(
     dep.`rocket-chip`
   )
+
+  object dist extends Module {
+    def chiselModules = dep.chisel(v.defaultScalaVersion).transitiveModuleRunModuleDeps :+
+      dep.chisel(v.defaultScalaVersion)
+
+    // Keep module/source-root directories: different Chisel modules contain distinct
+    // sources with the same package and filename (e.g. SimulationTestHarness.scala).
+    def bundledSources(modules: Seq[mill.javalib.JavaModule]) = Task.Anon {
+      val filesByModule = Task.traverse(modules)(_.allSourceFiles)()
+      val rootsByModule = Task.traverse(modules)(_.allSources)()
+      val sourceRoots = scala.collection.mutable.ArrayBuffer.empty[String]
+      modules.indices.foreach { i =>
+        val moduleDir = modules(i).moduleDir
+        val moduleOutput = Task.dest / "sources" /
+          moduleDir.relativeTo(mill.api.BuildCtx.workspaceRoot / "dep")
+        rootsByModule(i).foreach { root =>
+          val files = filesByModule(i).filter(_.path.startsWith(root.path))
+          if (files.nonEmpty) {
+            val relativeRoot = if (root.path.startsWith(moduleDir)) {
+              root.path.relativeTo(moduleDir)
+            } else {
+              os.RelPath("generated") / root.path.last
+            }
+            val outputRoot = moduleOutput / relativeRoot
+            sourceRoots += outputRoot.relativeTo(Task.dest).toString
+            files.foreach { file =>
+              os.copy(file.path, outputRoot / file.path.relativeTo(root.path), createFolders = true)
+            }
+          }
+        }
+      }
+      os.write(
+        Task.dest / "sources" / "README.txt",
+        "These are the exact local sources used to compile this JAR, including generated sources.\n" +
+          "Module directories are preserved to avoid overwriting same-named source files.\n" +
+          "Attach the following directories as source roots in your IDE:\n\n" +
+          sourceRoots.distinct.sorted.mkString("\n") + "\n",
+        createFolders = true
+      )
+      PathRef(Task.dest)
+    }
+
+    def assemblyRules = mill.javalib.Assembly.defaultRules ++ Seq(
+      mill.javalib.Assembly.Rule.AppendPattern("META-INF/services/.*", "\n"),
+      mill.javalib.Assembly.Rule.Exclude("META-INF/INDEX.LIST"),
+      mill.javalib.Assembly.Rule.ExcludePattern("(^|.*/)module-info\\.class$")
+    )
+
+    // Like Chisel's Unipublish: aggregate local classpaths for the JAR and
+    // aggregate Maven declarations for the POM. Compiler plugins are separate.
+    trait DistributionModule extends ScalaModule with PublishModule {
+      def components: Seq[mill.javalib.JavaModule]
+      def scalaVersion = v.defaultScalaVersion
+      override def sources = Task.Sources()
+      def bundledSourceFiles = Task { bundledSources(components)() }
+      override def localClasspath = Task {
+        Task.traverse(components)(_.localClasspath)().flatten.distinct
+      }
+      override def mvnDeps = Task {
+        Task.traverse(components)(_.mvnDeps)().flatten.distinct
+      }
+      override def runMvnDeps = Task {
+        Task.traverse(components)(_.runMvnDeps)().flatten.distinct
+      }
+      override def compileMvnDeps = Task {
+        Task.traverse(components)(_.compileMvnDeps)().flatten.distinct
+      }
+      def pomSettings = PomSettings(
+        description = s"${artifactName()} built from xs-utils dependency sources",
+        organization = "org.chipsalliance",
+        url = "https://github.com/OpenXiangShan-Nanhu/xs-utils",
+        licenses = Seq.empty,
+        versionControl = VersionControl.github("OpenXiangShan-Nanhu", "xs-utils"),
+        developers = Seq.empty
+      )
+      override def publishProperties = super.publishProperties() ++ Map(
+        "scala.version" -> v.defaultScalaVersion,
+        "scala.binary.version" -> "2.13"
+      )
+      override def manifest = super.manifest().add(
+        "Implementation-Title" -> artifactName(),
+        "Implementation-Version" -> publishVersion(),
+        "Scala-Version" -> v.defaultScalaVersion
+      )
+      def mavenMetadata = Task {
+        val dir = Task.dest / "META-INF" / "maven" / pomSettings().organization / artifactId()
+        os.copy(pom().path, dir / "pom.xml", createFolders = true)
+        os.write(dir / "pom.properties",
+          s"groupId=${pomSettings().organization}\nartifactId=${artifactId()}\nversion=${publishVersion()}\n")
+        PathRef(Task.dest)
+      }
+      override def jar = Task {
+        mill.javalib.Assembly.create(
+          Task.dest / s"${artifactName()}.jar",
+          (localClasspath() ++ Seq(bundledSourceFiles(), mavenMetadata()))
+            .map(_.path).filter(os.exists),
+          manifest = manifest(),
+          assemblyRules = dist.assemblyRules
+        ).pathRef
+      }
+    }
+
+    object chisel extends DistributionModule {
+      def components = chiselModules
+      override def artifactName = "chisel"
+      def publishVersion = v.chiselVersion
+      override def manifest = super.manifest().add("Specification-Version" -> "7.9")
+    }
+
+    def chiselJar = Task { chisel.jar() }
+
+    // Test-only Maven repository under out/, without installing into ~/.m2.
+    def chiselRepository = Task {
+      val group = chisel.pomSettings().organization
+      val id = chisel.artifactId()
+      val version = chisel.publishVersion()
+      val dir = Task.dest / os.RelPath(group.replace('.', '/')) / id / version
+      os.copy(chisel.jar().path, dir / s"$id-$version.jar", createFolders = true)
+      os.copy(chisel.pom().path, dir / s"$id-$version.pom")
+      PathRef(Task.dest)
+    }
+
+    // Always export cached artifacts, even after `xmake clean`.
+    def jars() = Task.Command {
+      val artifacts = Seq(
+        "chisel.jar" -> chisel.jar(), "chisel.pom" -> chisel.pom()
+      )
+      val outputDir = mill.api.BuildCtx.workspaceRoot / "build"
+      artifacts.map { case (name, artifact) =>
+        val output = outputDir / name
+        os.copy.over(artifact.path, output, createFolders = true)
+        Task.log.info(s"Generated $output")
+        PathRef(output)
+      }
+    }
+
+    object verifyChisel extends ScalaModule {
+      def scalaVersion = v.defaultScalaVersion
+      override def scalacPluginMvnDeps = Seq(v.chiselPlugin)
+      override def scalacOptions = super.scalacOptions() ++ Seq(
+        "-language:reflectiveCalls", "-Ymacro-annotations", "-Ytasty-reader"
+      )
+      override def sources = Task.Sources {
+        mill.api.BuildCtx.workspaceRoot / "tests" / "packaging"
+      }
+      override def repositories = Task {
+        Seq(chiselRepository().path.toNIO.toUri.toString, "https://repo1.maven.org/maven2")
+      }
+      override def mvnDeps = Seq(v.chisel)
+    }
+
+  }
 
   object test extends SbtTests {
     override def mvnDeps = super.mvnDeps() ++ Seq(v.scalatest)
