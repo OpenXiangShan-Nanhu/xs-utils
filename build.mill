@@ -312,11 +312,24 @@ object `package` extends VersionSbtModule {
       override def jar = Task {
         mill.javalib.Assembly.create(
           Task.dest / s"${artifactName()}.jar",
-          (localClasspath() ++ Seq(bundledSourceFiles(), mavenMetadata()))
+          (localClasspath() ++ Seq(mavenMetadata()))
             .map(_.path).filter(os.exists),
           manifest = manifest(),
           assemblyRules = dist.assemblyRules
         ).pathRef
+      }
+      override def sourceJar = Task {
+        // Match Chisel's Unipublish source artifact: source roots are placed at
+        // archive root so IDEA can resolve SourceFile attributes automatically.
+        val sourceDirs = Task.traverse(components)(_.allSources)().flatten ++
+          Task.traverse(components)(_.resources)().flatten ++
+          Task.traverse(components)(_.compileResources)().flatten ++
+          Task.traverse(components)(_.generatedSources)().flatten
+        mill.api.PathRef(mill.util.Jvm.createJar(
+          Task.dest / s"${artifactName()}-sources.jar",
+          sourceDirs.map(_.path).filter(os.exists),
+          manifest()
+        ))
       }
     }
 
@@ -328,6 +341,7 @@ object `package` extends VersionSbtModule {
     }
 
     def chiselJar = Task { chisel.jar() }
+    def chiselSourcesJar = Task { chisel.sourceJar() }
 
     // Test-only Maven repository under out/, without installing into ~/.m2.
     def chiselRepository = Task {
@@ -336,6 +350,7 @@ object `package` extends VersionSbtModule {
       val version = chisel.publishVersion()
       val dir = Task.dest / os.RelPath(group.replace('.', '/')) / id / version
       os.copy(chisel.jar().path, dir / s"$id-$version.jar", createFolders = true)
+      os.copy(chisel.sourceJar().path, dir / s"$id-$version-sources.jar")
       os.copy(chisel.pom().path, dir / s"$id-$version.pom")
       PathRef(Task.dest)
     }
@@ -343,7 +358,9 @@ object `package` extends VersionSbtModule {
     // Always export cached artifacts, even after `xmake clean`.
     def jars() = Task.Command {
       val artifacts = Seq(
-        "chisel.jar" -> chisel.jar(), "chisel.pom" -> chisel.pom()
+        "chisel.jar" -> chisel.jar(),
+        "chisel-sources.jar" -> chisel.sourceJar(),
+        "chisel.pom" -> chisel.pom()
       )
       val outputDir = mill.api.BuildCtx.workspaceRoot / "build"
       artifacts.map { case (name, artifact) =>
