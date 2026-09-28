@@ -5,7 +5,7 @@ import chisel3.experimental.hierarchy.IsLookupable
 import chisel3.util._
 import chisel3.util.experimental.BoringUtils
 import xs.utils.{FileRegisters, ResetRRArbiter}
-import chisel3.experimental.{CheckBoring, EscapedWire, SourceInfo, SourceLine, SpecialWireInit, noPrefix}
+import chisel3.experimental.{CheckBoring, EscapedWire, SourceInfo, SourceLine, SpecialWireInit, noPrefix, prefix}
 import org.chipsalliance.cde.config.{Field, Parameters}
 import xs.utils.queue.FastQueue
 
@@ -216,10 +216,10 @@ object HardwareAssertion {
   ): Unit = {
     val metadata = sourceDesc(hardDesc, s)
     val source = SourceLine(metadata.file, metadata.line, metadata.column)
-    val assertCond = cond
+    val assertCond = WireInit(cond)
     assert(assertCond, simulationDesc(metadata, softDesc))(source)
     val hwaP = p(HardwareAssertionKey)
-    if(hwaP.enable) {
+    val pcode = if(hwaP.enable) prefix("hwa") {
       val identity = s"${metadata.hardDesc}:${metadata.location}"
       val hashCode = s"${identity.hashCode}"
       if(!hashToCountMap.contains(hashCode)) {
@@ -230,9 +230,14 @@ object HardwareAssertion {
       val node = HAssertNode(desc = Seq(metadata), level = 0, point = true, metadata.hardDesc)
       val thisCond = EscapedWire(new HAssertBundle(node))
       thisCond.cond.get := !assertCond
-      thisCond.suggestName(s"hwa_$pcode")
+      thisCond.suggestName(s"$pcode")
       SpecialWireInit(source, thisCond.cond.get, 0, prepend = true)
       hwaSeq = hwaSeq :+ thisCond
+      pcode
+    }
+    if(hwaP.enable) {
+      assertCond.suggestName(s"hwa_assert_cond_${pcode}")
+      dontTouch(assertCond)
     }
   }
 
@@ -274,7 +279,7 @@ object HardwareAssertion {
   def placePipe(level: Int, moduleTop: Boolean = false, name:String = "")(
     implicit p: Parameters
   ): Option[Seq[HAssertBundle]] = {
-    if(p(HardwareAssertionKey).enable && hwaSeq.count(_.node.level < level) != 0) {
+    if(p(HardwareAssertionKey).enable && hwaSeq.count(_.node.level < level) != 0) prefix("hwa") {
       val candidates = hwaSeq.filter(h => h.node.level < level && CheckBoring(h))
       val children = candidates.filterNot(_.node.level == 0) ++ squashPoints(candidates.filter(_.node.level == 0))
       val width = p(HardwareAssertionKey).maxInfoBits
@@ -318,7 +323,7 @@ object HardwareAssertion {
   def fromIO(buses:Option[MixedVec[HAssertBundle]])(implicit p: Parameters):Unit = {
     val hwaP = p(HardwareAssertionKey)
     val _impl = buses.isDefined && hwaP.enable
-    if(_impl) {
+    if(_impl) prefix("hwa") {
       val _buses = buses.get
       val offset = importOffset(_buses.toSeq)
       for(i <- _buses.indices) yield {
@@ -334,7 +339,7 @@ object HardwareAssertion {
 
   def exportIO(implicit p: Parameters): Option[MixedVec[HAssertBundle]] = {
     val hwaP = p(HardwareAssertionKey)
-    if(hwaP.enable) {
+    if(hwaP.enable) prefix("hwa") {
       val candidates = hwaSeq.filter(CheckBoring(_))
       val children = candidates.filterNot(_.node.point) ++ squashPoints(candidates.filter(_.node.point))
       if(children.nonEmpty) {
