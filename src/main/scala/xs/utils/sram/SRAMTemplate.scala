@@ -202,6 +202,15 @@ class SRAMTemplate[T <: Data](
     pipeDepth = pipeDepth,
     holder = () => this.pathName
   )
+  SramConstr.registerRamInst(SramTimingMeta[T](
+    iSetup = setup,
+    iHold  = if(extraHold || explicitHold) setup else setup - 1,
+    oSetup = latency,
+    sp     = singlePort,
+    name   = vname,
+    mask   = sp.sramMaskBits > 1,
+    inst   = this
+  ))
   private val brcBd = io.broadcast.getOrElse(mbistBd.broadcast)
   val sramName: String = vname
   if(extraReset) require(shouldReset)
