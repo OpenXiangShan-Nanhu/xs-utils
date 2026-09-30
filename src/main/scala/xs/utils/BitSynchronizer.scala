@@ -1,7 +1,7 @@
 package xs.utils
 
 import chisel3._
-import xs.utils.constr.{ConstrManager, GetPins, Multicycle}
+import xs.utils.constr.{ConstrManager, GetPins, Multicycle, SynchronizerReg}
 
 class BitSynchronizer(stage: Int = 3, init: Option[Bool] = None) extends Module {
   val io = IO(new Bundle {
@@ -21,8 +21,7 @@ class BitSynchronizer(stage: Int = 3, init: Option[Bool] = None) extends Module 
   sync_regs.zipWithIndex.foreach({ case (s, i) => s.suggestName(s"sync_$i") })
   io.out := sync_regs.last
 
-  ConstrManager.registerConstr(Multicycle(50, hold = false, end = true, to = Some(GetPins(() => ConstrManager.getPath(this) + s"/sync_0*/D"))))
-  ConstrManager.registerConstr(Multicycle(49, hold = true,  end = true, to = Some(GetPins(() => ConstrManager.getPath(this) + s"/sync_0*/D"))))
+  SynchronizerReg(this, "*sync_0*")
 }
 
 object BitSynchronizer {

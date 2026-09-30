@@ -14,11 +14,11 @@ case class Multicycle (
   override def toString:String = {
     val strQueue = new mutable.Queue[String]()
     strQueue.addOne(s"set_multicycle_path $value")
-    strQueue.addOne(if(hold) "-hold" else "-setup")
+    strQueue.addOne(if(hold) "-hold " else "-setup")
     if(start) strQueue.addOne(s"-start")
-    if(end) strQueue.addOne(s"-end")
+    if(end) strQueue.addOne(s"-end  ")
     from.foreach(s => strQueue.addOne(s"-from $s"))
-    to.foreach(s => strQueue.addOne(s"-to $s"))
+    to.foreach(s => strQueue.addOne(s"-to   $s"))
     through.foreach(s => strQueue.addOne(s"-through $s"))
     strQueue.toSeq.mkString(" ")
   }
