@@ -175,11 +175,7 @@ class SRAMTemplate[T <: Data](
   require(latency >= 1)
   require(setup >= 1)
   if(!singlePort) require(latency <= 2)
-  private val pwctl = if(powerCtl || setup > 1) {
-    Some(Wire(new GenericSramPowerCtl))
-  } else {
-    None
-  }
+  private val pwctl = Option.when(powerCtl)(Wire(new GenericSramPowerCtl))
   private val isc = if(extraHold) setup + 1 else setup // input steady cycles
   private val interval = latency.max(isc)
   private val icg = Module(new MbistClockGateCell(isc > 1))
@@ -305,26 +301,10 @@ class SRAMTemplate[T <: Data](
   icg.dft.fromBroadcast(brcBd)
   icg.E := ckRen | ckWen
 
-  if(pwctl.isDefined) {
-    if(setup > 1) {
-      val activeLength = setup + latency + 1
-      val activeReg = RegInit(0.U(activeLength.W))
-      when(ramWen | ramRen) {
-        activeReg := Fill(activeLength, true.B)
-      }.elsewhen(activeReg.orR) {
-        activeReg := Cat(false.B, activeReg) >> 1
-      }
-      pwctl.get.light_sleep := !activeReg(0)
-    } else {
-      pwctl.get.light_sleep := Mux(mbistBd.ack || resetState, false.B, io.pwctl.get.deact)
-    }
-    if(powerCtl) {
-      pwctl.get.deep_sleep := Mux(mbistBd.ack || resetState, false.B, io.pwctl.get.ret)
-      pwctl.get.shut_down := Mux(mbistBd.ack || resetState, false.B, io.pwctl.get.stop)
-    } else {
-      pwctl.get.deep_sleep := false.B
-      pwctl.get.shut_down := false.B
-    }
+  if(powerCtl) {
+    pwctl.get.light_sleep := Mux(mbistBd.ack || resetState, false.B, io.pwctl.get.deact)
+    pwctl.get.deep_sleep := Mux(mbistBd.ack || resetState, false.B, io.pwctl.get.ret)
+    pwctl.get.shut_down := Mux(mbistBd.ack || resetState, false.B, io.pwctl.get.stop)
     val sleep = pwctl.get.asUInt.orR
     when(sleep) {
       assert(!wenStretched && !renStretched, s"sleeping sram receive a request!")

@@ -31,11 +31,6 @@ case class SramTimingMeta[T <: Data](
       ))
     }
 
-    if(iSetup > 1) {
-      strQueue.addOne(Multicycle(iSetup, hold = false, start = true, from = Some(GetPins(() => s"$ramPath/activeReg_0*/CK"))))
-      strQueue.addOne(Multicycle(iHold,  hold = true,  start = true, from = Some(GetPins(() => s"$ramPath/activeReg_0*/CK"))))
-    }
-
     if(sp) {
       if(iSetup > 1 || iHold > 0) {
         strQueue.addOne(Multicycle(iSetup, hold = false, start = true, through = Some(GetPins(() => s"$ramPath/array/RW0_addr*"))))
