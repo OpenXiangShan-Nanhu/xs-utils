@@ -302,9 +302,9 @@ class SRAMTemplate[T <: Data](
   icg.E := ckRen | ckWen
 
   if(powerCtl) {
-    pwctl.get.light_sleep := Mux(mbistBd.ack || resetState, false.B, io.pwctl.get.deact)
-    pwctl.get.deep_sleep := Mux(mbistBd.ack || resetState, false.B, io.pwctl.get.ret)
-    pwctl.get.shut_down := Mux(mbistBd.ack || resetState, false.B, io.pwctl.get.stop)
+    pwctl.get.light_sleep := Mux(resetState, false.B, io.pwctl.get.deact)
+    pwctl.get.deep_sleep := Mux(resetState, false.B, io.pwctl.get.ret)
+    pwctl.get.shut_down := Mux(resetState, false.B, io.pwctl.get.stop)
     val sleep = pwctl.get.asUInt.orR
     when(sleep) {
       assert(!wenStretched && !renStretched, s"sleeping sram receive a request!")
