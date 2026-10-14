@@ -9,7 +9,7 @@ case class CreateClock(
 ) extends ConstrStmt {
   override def toString:String = {
     val strQueue = new mutable.Queue[String]()
-    strQueue.addOne(s"create_generated_clock $period")
+    strQueue.addOne(s"create_clock $period")
     name.foreach(s => strQueue.addOne(s"-name $s"))
     strQueue.addOne(s"$target")
     strQueue.toSeq.mkString(" ")
