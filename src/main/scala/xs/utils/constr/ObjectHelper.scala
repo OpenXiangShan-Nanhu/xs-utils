@@ -21,8 +21,8 @@ abstract class ObjectHelper extends ConstrStmt {
     _string(strQueue)
     strQueue.addOne(cmd)
     if(regexp) strQueue.addOne("-regexp")
-    filter.foreach(s => strQueue.addOne(s"-filter $s"))
     of.foreach(s => strQueue.addOne(s"-of_objects $s"))
+    filter.foreach(s => strQueue.addOne(s"-filter $s"))
     strQueue.addOne(s"${target()}")
     strQueue.toSeq.mkString("[", " ", "]")
   }

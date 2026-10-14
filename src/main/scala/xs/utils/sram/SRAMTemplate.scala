@@ -204,7 +204,6 @@ class SRAMTemplate[T <: Data](
     oSetup = latency,
     sp     = singlePort,
     name   = vname,
-    mask   = sp.sramMaskBits > 1,
     inst   = this
   ))
   private val brcBd = io.broadcast.getOrElse(mbistBd.broadcast)

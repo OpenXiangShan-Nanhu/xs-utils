@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.experimental.BaseModule
 import chisel3.util.experimental.BoringUtils
 import xs.utils.GlobalData
+import xs.utils.constr.{GetCells, GetPins}
 
 import scala.collection.mutable
 
@@ -39,12 +40,31 @@ class ClockGate extends ExtModule {
       |endmodule""".stripMargin)
 }
 
+case class ClockGateCellInfo(
+  instPattern:String,
+  clockIn:String,
+  clockOut:String
+) {
+  def clockInPin(wrapper:() => String):GetPins = {
+    GetPins(target = () => s"${wrapper()}/$instPattern/$clockIn")
+  }
+  def clockOutPin(wrapper:() => String):GetPins = {
+    GetPins(target = () => s"${wrapper()}/$instPattern/$clockOut")
+  }
+}
+
 class CgteBundle extends Bundle {
   val te = Input(Bool())
 }
 object ClockGate {
   private val teBoringQueue = new mutable.Queue[CgteBundle]
   private val hashModulesHasCgen = new mutable.Queue[BaseModule]
+  var clockGateCellInfo = ClockGateCellInfo(
+    instPattern = "U_STD_CLKGT",
+    clockIn = "CP",
+    clockOut = "Q"
+  )
+
   def apply(TE:Bool, E:Bool, CK:Clock):Clock = {
     val module = Module.currentModule.get
     val cgbd = if(hashModulesHasCgen.contains(module)) {
