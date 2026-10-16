@@ -23,6 +23,7 @@ case class CreateGeneratedClock(
   divide:Option[Int] = None,
   multi:Option[Int] = None,
   duty: Option[Double] = None,
+  edges: Option[String] = None,
   comb: Boolean = false,
 ) extends ConstrStmt {
   override def toString:String = {
@@ -33,6 +34,7 @@ case class CreateGeneratedClock(
     divide.foreach(s => strQueue.addOne(s"-divide_by $s"))
     multi.foreach(s => strQueue.addOne(s"-multiply_by $s"))
     duty.foreach(s => strQueue.addOne(s"-duty_cycle ${scala.math.round(s * 100)}"))
+    edges.foreach(s => strQueue.addOne(s"-edges {$s}"))
     if(comb) strQueue.addOne(s"-combinational")
     strQueue.addOne(s"$target")
     strQueue.toSeq.mkString(" ")

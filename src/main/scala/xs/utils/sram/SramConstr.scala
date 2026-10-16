@@ -28,7 +28,7 @@ case class SramTimingMeta[T <: Data](
         target = ClockGate.clockGateCellInfo.clockOutPin(cgPath),
         source = ClockGate.clockGateCellInfo.clockInPin(cgPath),
         divide = Some(intvl),
-        duty = Some(1.0 / (intvl * 2)),
+        edges = Some(s"1 2 ${2 * intvl + 1}")
       ))
     }
 
