@@ -9,7 +9,7 @@ case class CreateClock(
 ) extends ConstrStmt {
   override def toString:String = {
     val strQueue = new mutable.Queue[String]()
-    strQueue.addOne(s"create_clock $period")
+    strQueue.addOne(s"create_clock -period $period")
     name.foreach(s => strQueue.addOne(s"-name $s"))
     strQueue.addOne(s"$target")
     strQueue.toSeq.mkString(" ")
@@ -37,6 +37,22 @@ case class CreateGeneratedClock(
     edges.foreach(s => strQueue.addOne(s"-edges {$s}"))
     if(comb) strQueue.addOne(s"-combinational")
     strQueue.addOne(s"$target")
+    strQueue.toSeq.mkString(" ")
+  }
+}
+
+case class SetClockGroup(
+  name:Option[String] = None,
+  async:Boolean = false,
+  groups:Seq[GetClock],
+) extends ConstrStmt {
+  override def toString:String = {
+    val strQueue = new mutable.Queue[String]()
+    strQueue.addOne(s"set_clock_groups")
+    name.foreach(s => strQueue.addOne(s"-name $s"))
+    if(async) strQueue.addOne(s"-asynchronous")
+    val grpStr = groups.map(g => s"  -group $g").mkString("  \\\n", "  \\\n", "")
+    strQueue.addOne(grpStr)
     strQueue.toSeq.mkString(" ")
   }
 }

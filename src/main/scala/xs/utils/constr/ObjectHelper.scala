@@ -18,8 +18,8 @@ abstract class ObjectHelper extends ConstrStmt {
 
   override def toString:String = {
     val strQueue = new mutable.Queue[String]()
-    _string(strQueue)
     strQueue.addOne(cmd)
+    _string(strQueue)
     if(regexp) strQueue.addOne("-regexp")
     of.foreach(s => strQueue.addOne(s"-of_objects $s"))
     filter.foreach(s => strQueue.addOne(s"-filter $s"))
@@ -69,5 +69,18 @@ case class GetNets(
 ) extends ObjectHelper{
   val cmd = "get_nets"
   def _string(sq:mutable.Queue[String]):Unit = {
+  }
+}
+
+case class GetClock(
+  target: () => String = () => "",
+  filter:Option[String] = None,
+  of:Option[ObjectHelper] = None,
+  regexp:Boolean = false,
+  includeGen:Boolean = false
+) extends ObjectHelper{
+  val cmd = "get_clocks"
+  def _string(sq:mutable.Queue[String]):Unit = {
+    if(includeGen) sq.addOne("-include_generated_clocks")
   }
 }
