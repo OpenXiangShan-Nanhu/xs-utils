@@ -447,14 +447,16 @@ object HardwareAssertion {
       }
       releasedManifests(pfx) = reference
       renderedCatalog = None
-      FileRegisters.add(
-        dir,
-        manifestFile,
-        renderManifest(pfx, reference.runtimeSourceTypes, idWidth, assertions),
-        dontCarePrefix = true
-      )
-      val text = assertions.map(d => f"${d.id}%d | 0x${d.id}%04x | ${d.hardDesc}").mkString("\n") + "\n"
-      FileRegisters.add(dir, s"${pfx}_hardware_assertion.txt", text, dontCarePrefix = true)
+      if(!FileRegisters.contains(manifestFile)) {
+        FileRegisters.add(
+          dir,
+          manifestFile,
+          renderManifest(pfx, reference.runtimeSourceTypes, idWidth, assertions),
+          dontCarePrefix = true
+        )
+        val text = assertions.map(d => f"${d.id}%d | 0x${d.id}%04x | ${d.hardDesc}").mkString("\n") + "\n"
+        FileRegisters.add(dir, s"${pfx}_hardware_assertion.txt", text, dontCarePrefix = true)
+      }
       if(!FileRegisters.contains("hardware-assertion-catalog.json")) {
         FileRegisters.add(dir, "hardware-assertion-catalog.json", renderCatalog, dontCarePrefix = true)
       }
