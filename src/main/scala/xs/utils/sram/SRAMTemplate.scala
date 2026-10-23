@@ -22,6 +22,7 @@ package xs.utils.sram
 
 import chisel3._
 import chisel3.util._
+import xs.utils.constr.McpReg
 import xs.utils.mbist.MbistClockGateCell
 
 class SRAMBundleA(val set: Int) extends Bundle {
@@ -215,7 +216,7 @@ class SRAMTemplate[T <: Data](
   private val resetWen = WireInit(false.B)
 
   val extra_reset = if(extraReset) Some(IO(Input(Bool()))) else None
-  if(shouldReset) {
+  val resetGen = if(shouldReset) {
     val resetGen = Module(new SramResetGen(set = set, interval = interval, extraReset = extraReset))
     resetGen.clock := clock
     resetGen.reset := reset
@@ -223,6 +224,9 @@ class SRAMTemplate[T <: Data](
     resetState := resetGen.io.resetState
     resetAddr := resetGen.io.waddr
     resetWen := resetGen.io.wen
+    Some(resetGen)
+  } else {
+    None
   }
   private val enableBypass = bypassWrite && !singlePort
   private val concurrentRW = io.w.req.fire && io.r.req.fire && io.w.req.bits.setIdx === io.r.req.bits.setIdx
@@ -301,12 +305,16 @@ class SRAMTemplate[T <: Data](
   icg.E := ckRen | ckWen
 
   if(powerCtl) {
-    pwctl.get.light_sleep := Mux(resetState, false.B, io.pwctl.get.deact)
-    pwctl.get.deep_sleep := Mux(resetState, false.B, io.pwctl.get.ret)
-    pwctl.get.shut_down := Mux(resetState, false.B, io.pwctl.get.stop)
+    val resetStatePwr = resetGen.map(r => RegNext(r.io.resetState).suggestName(s"reset_state_pwr_act_static"))
+    pwctl.get.light_sleep := Mux(resetStatePwr.getOrElse(false.B), false.B, io.pwctl.get.deact)
+    pwctl.get.deep_sleep := Mux(resetStatePwr.getOrElse(false.B), false.B, io.pwctl.get.ret)
+    pwctl.get.shut_down := Mux(resetStatePwr.getOrElse(false.B), false.B, io.pwctl.get.stop)
     val sleep = pwctl.get.asUInt.orR
     when(sleep) {
       assert(!wenStretched && !renStretched, s"sleeping sram receive a request!")
+    }
+    if(resetStatePwr.isDefined) {
+      resetStatePwr.foreach(r => McpReg(this, "*reset_state_pwr_act_static*", resetGen.get.resetDelay - 2))
     }
   }
 

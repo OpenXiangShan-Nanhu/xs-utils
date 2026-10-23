@@ -6,7 +6,7 @@ import chisel3.util._
 class SramResetGen(
   set: Int,
   interval: Int = 1,
-  resetDelay: Int = 4,
+  val resetDelay: Int = 10,
   extraReset: Boolean = false
 ) extends Module {
   private val setBits = log2Ceil(set)
