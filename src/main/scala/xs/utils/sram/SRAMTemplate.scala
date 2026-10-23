@@ -359,11 +359,12 @@ class SRAMTemplate[T <: Data](
   io.r.req.ready := reqRdy && !resetHold && !singleHold
   io.w.req.ready := reqRdy && !resetHold
 
-  when(io.r.req.valid) {
-    assert(io.r.req.bits.setIdx < set.U, cf"Illegal read addr 0x${io.r.req.bits.setIdx}%x on SRAM, max addr is 0x${(set - 1).toHexString}")
+  // MCP wrappers register addresses on request acceptance; check the array access phase.
+  when(renStretched && !brcBd.ram_hold) {
+    assert(ramRaddr < set.U, cf"Illegal read addr 0x${ramRaddr}%x on SRAM, max addr is 0x${(set - 1).toHexString}")
   }
-  when(io.w.req.valid) {
-    assert(io.w.req.bits.setIdx < set.U, cf"Illegal write addr 0x${io.w.req.bits.setIdx}%x on SRAM, max addr is 0x${(set - 1).toHexString}")
+  when(wenStretched && !brcBd.ram_hold) {
+    assert(ramWaddr < set.U, cf"Illegal write addr 0x${ramWaddr}%x on SRAM, max addr is 0x${(set - 1).toHexString}")
   }
 
   private val sramCatIn = Cat(ramRaddr, renStretched, ramWaddr, ramWdata, ramWmask, wenStretched)
