@@ -14,12 +14,14 @@ package object dft {
     val mcp_hold = Input(Bool())
   }
 
-  class PowerDomainTestBundle(pwrctl:Boolean) extends Bundle {
+  class PowerDomainTestBundle(pwrctl:Boolean = false, memctl:Boolean = false) extends Bundle {
     val clk_on = Input(Bool())
     val clk_off = Input(Bool())
     val pwr_req = Option.when(pwrctl)(Input(Bool()))
     val pwr_ack = Option.when(pwrctl)(Output(Bool()))
     val iso_on = Option.when(pwrctl)(Input(Bool()))
+    val mem_pwr_sel = Option.when(memctl)(Input(Bool()))
+    val mem_pwr_en = Option.when(memctl)(Input(Bool()))
   }
 
   class BaseTestBundle extends Bundle {
