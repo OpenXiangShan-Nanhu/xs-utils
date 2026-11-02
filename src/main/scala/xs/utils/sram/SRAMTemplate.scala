@@ -22,6 +22,7 @@ package xs.utils.sram
 
 import chisel3._
 import chisel3.util._
+import chisel3.layers._
 import xs.utils.constr.McpReg
 import xs.utils.mbist.MbistClockGateCell
 
@@ -368,39 +369,42 @@ class SRAMTemplate[T <: Data](
   }
 
   private val sramCatIn = Cat(ramRaddr, renStretched, ramWaddr, ramWdata, ramWmask, wenStretched)
-  private val sva_ischk = Option.when(setup > 1)(Module(new SetupMulticycleAssert(sramCatIn.getWidth, setup)))
-  private val sva_ihchk = Option.when(extraHold)(Module(new HoldMulticycleAssert(sramCatIn.getWidth)))
-  private val sva_oschk = Option.when(latency > 1)(Module(new SetupMulticycleAssert(dataWidth, latency, "BYPASS_CLOCKGATE")))
-  private val sva_olchk = Option.when(latency > 1)(Module(new LatencyAssert(latency)))
-  private val sva_eichk = Option.when(interval > 1)(Module(new EventIntervalAssert(interval)))
 
-  sva_ischk.foreach(m => {
-    m.io.i_clk := clock
-    m.io.i_rst := reset
-    m.io.i_con := icg.E
-    m.io.i_dat := sramCatIn
-  })
-  sva_ihchk.foreach(m => {
-    m.io.i_clk := clock
-    m.io.i_rst := reset
-    m.io.i_con := icg.E
-    m.io.i_dat := sramCatIn
-  })
-  sva_oschk.foreach(m => {
-    m.io.i_clk := clock
-    m.io.i_rst := reset
-    m.io.i_con := io.r.resp.valid
-    m.io.i_dat := ramRdata
-  })
-  sva_olchk.foreach(m => {
-    m.io.i_clk := clock
-    m.io.i_rst := reset
-    m.io.i_con := ckRen
-    m.io.i_dat := io.r.resp.valid
-  })
-  sva_eichk.foreach(m => {
-    m.io.i_clk := clock
-    m.io.i_rst := reset
-    m.io.i_evt := icg.E
-  })
+  layer.block(chisel3.layers.Verification.Assert.Temporal) {
+    val sva_ischk = Option.when(setup > 1)(Module(new SetupMulticycleAssert(sramCatIn.getWidth, setup)))
+    val sva_ihchk = Option.when(extraHold)(Module(new HoldMulticycleAssert(sramCatIn.getWidth)))
+    val sva_oschk = Option.when(latency > 1)(Module(new SetupMulticycleAssert(dataWidth, latency, "BYPASS_CLOCKGATE")))
+    val sva_olchk = Option.when(latency > 1)(Module(new LatencyAssert(latency)))
+    val sva_eichk = Option.when(interval > 1)(Module(new EventIntervalAssert(interval)))
+
+    sva_ischk.foreach { m =>
+      m.io.i_clk := clock
+      m.io.i_rst := reset
+      m.io.i_con := icg.E
+      m.io.i_dat := sramCatIn
+    }
+    sva_ihchk.foreach { m =>
+      m.io.i_clk := clock
+      m.io.i_rst := reset
+      m.io.i_con := icg.E
+      m.io.i_dat := sramCatIn
+    }
+    sva_oschk.foreach { m =>
+      m.io.i_clk := clock
+      m.io.i_rst := reset
+      m.io.i_con := io.r.resp.valid
+      m.io.i_dat := ramRdata
+    }
+    sva_olchk.foreach { m =>
+      m.io.i_clk := clock
+      m.io.i_rst := reset
+      m.io.i_con := ckRen
+      m.io.i_dat := io.r.resp.valid
+    }
+    sva_eichk.foreach { m =>
+      m.io.i_clk := clock
+      m.io.i_rst := reset
+      m.io.i_evt := icg.E
+    }
+  }
 }
