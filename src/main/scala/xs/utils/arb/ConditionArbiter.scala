@@ -1,6 +1,7 @@
 package xs.utils.arb
 import chisel3._
 import chisel3.util._
+import xs.utils.verilog._
 
 class SelNto1[T <: Data](gen: T, size:Int, selfCmpOtherFunc: (T, T) => Bool) extends Module {
   val io = IO(new Bundle {
@@ -16,7 +17,8 @@ class SelNto1[T <: Data](gen: T, size:Int, selfCmpOtherFunc: (T, T) => Bool) ext
   assert((valids & io.out) === io.out, "selected entries should all be valid!")
 }
 
-abstract class ConditionArbiter[T <: Data](gen: T, size:Int, selfCmpOtherFunc: (T, T) => Bool, arb: => BaseArbiter[T]) extends BaseArbiter(gen, size)  {
+abstract class ConditionArbiter[T <: Data](gen: T, size:Int, selfCmpOtherFunc: (T, T) => Bool, arb: => Module { val io: ArbiterIO[T] }) extends Module {
+  val io = IO(new ArbiterIO(gen, size))
 
   private val active = Cat(io.in.map(_.valid)).orR
   private val selector = Module(new SelNto1(gen, size, selfCmpOtherFunc))
@@ -39,8 +41,6 @@ abstract class ConditionArbiter[T <: Data](gen: T, size:Int, selfCmpOtherFunc: (
   io.out <> selArb.io.out
 }
 
-class ConditionRRArbiter[T <: Data](gen: T, size:Int, selfCmpOtherFunc: (T, T) => Bool) extends ConditionArbiter(gen, size, selfCmpOtherFunc, new XsRRArbiter(gen, size))
+class ConditionRRArbiter[T <: Data](gen: T, size:Int, selfCmpOtherFunc: (T, T) => Bool) extends ConditionArbiter(gen, size, selfCmpOtherFunc, new SvRRArbiter(gen, size))
 
-class ConditionVipArbiter[T <: Data](gen: T, size:Int, selfCmpOtherFunc: (T, T) => Bool) extends ConditionArbiter(gen, size, selfCmpOtherFunc, new VipArbiter(gen, size))
-
-class ConditionStepVipArbiter[T <: Data](gen: T, size:Int, selfCmpOtherFunc: (T, T) => Bool) extends ConditionArbiter(gen, size, selfCmpOtherFunc, new StepVipArbiter(gen, size))
+class ConditionVipArbiter[T <: Data](gen: T, size:Int, selfCmpOtherFunc: (T, T) => Bool) extends ConditionArbiter(gen, size, selfCmpOtherFunc, new SvVipArbiter(gen, size))

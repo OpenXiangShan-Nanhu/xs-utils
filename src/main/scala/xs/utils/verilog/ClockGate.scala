@@ -3,41 +3,20 @@ package xs.utils.verilog
 import chisel3._
 import chisel3.experimental.BaseModule
 import chisel3.util.experimental.BoringUtils
-import xs.utils.GlobalData
 import xs.utils.constr.{GetCells, GetPins}
 
 import scala.collection.mutable
 
-class ClockGate extends ExtModule {
+class ClockGate extends VlogExtModule {
   val io = FlatIO(new Bundle {
     val TE = Input(Bool())
     val E = Input(Bool())
     val CK = Input(Clock())
     val Q = Output(Clock())
   })
-  private val modName = s"${GlobalData.prefix}ClockGate"
-  override val desiredName = modName
-  setInline(s"$modName.sv",
-    s"""
-      |// VCS coverage exclude_file
-      |module $modName (
-      |  input  wire TE,
-      |  input  wire E,
-      |  input  wire CK,
-      |  output wire Q
-      |);
-      |`ifdef SYNTHESIS
-      |  assign Q = CK;
-      |`elsif BYPASS_CLOCKGATE
-      |  assign Q = CK;
-      |`else
-      |  reg EN;
-      |  always_latch begin
-      |    if(!CK) EN = TE | E;
-      |  end
-      |  assign Q = CK & EN;
-      |`endif
-      |endmodule""".stripMargin)
+  private val rtl = new VlogRegistry
+  override val desiredName: String = rtl.nameOf(ClockGate)
+  rtl.register(this, ClockGate)
 }
 
 case class ClockGateCellInfo(
@@ -56,7 +35,31 @@ case class ClockGateCellInfo(
 class CgteBundle extends Bundle {
   val te = Input(Bool())
 }
-object ClockGate {
+object ClockGate extends VlogModule {
+  override val moduleName = "ClockGate"
+  override def render(ctx: VlogContext): String =
+    s"""
+      |// VCS coverage exclude_file
+      |module ${ctx.selfName} (
+      |  input  wire  TE,
+      |  input  wire  E,
+      |  input  wire  CK,
+      |  output wire  Q
+      |);
+      |`ifdef SYNTHESIS
+      |  assign Q = CK;
+      |`elsif BYPASS_CLOCKGATE
+      |  assign Q = CK;
+      |`else
+      |  logic EN;
+      |  // Intentional low-phase latch: hold the gate enable throughout CK's high phase.
+      |  always_latch begin
+      |    if(!CK) EN = TE | E;
+      |  end
+      |  assign Q = CK & EN;
+      |`endif
+      |endmodule""".stripMargin
+
   private val teBoringQueue = new mutable.Queue[CgteBundle]
   private val hashModulesHasCgen = new mutable.Queue[BaseModule]
   var clockGateCellInfo = ClockGateCellInfo(

@@ -1,21 +1,25 @@
 package xs.utils.verilog
 import chisel3._
-import xs.utils.GlobalData
 
-class ClockBuffer extends ExtModule {
+class ClockBuffer extends VlogExtModule {
   val io = FlatIO(new Bundle {
     val I = Input(Clock())
     val O = Output(Clock())
   })
-  private val modName = s"${GlobalData.prefix}ClockBuffer"
-  override val desiredName = modName
-  setInline(s"$modName.sv",
+  private val rtl = new VlogRegistry
+  override val desiredName: String = rtl.nameOf(ClockBuffer)
+  rtl.register(this, ClockBuffer)
+}
+
+object ClockBuffer extends VlogModule {
+  override val moduleName = "ClockBuffer"
+  override def render(ctx: VlogContext): String =
     s"""
        |// VCS coverage exclude_file
-       |module $modName (
-       |  input  wire I,
-       |  output wire O
+       |module ${ctx.selfName} (
+       |  input  wire  I,
+       |  output wire  O
        |);
        |  assign O = I;
-       |endmodule""".stripMargin)
+       |endmodule""".stripMargin
 }
