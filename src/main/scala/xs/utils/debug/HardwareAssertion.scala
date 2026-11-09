@@ -235,7 +235,7 @@ object HardwareAssertion {
       hwaSeq = hwaSeq :+ thisCond
       pcode
     }
-    if(hwaP.enable) {
+    if(hwaP.enable) noPrefix {
       assertCond.suggestName(s"hwa_assert_cond_${pcode}")
       dontTouch(assertCond)
     }
