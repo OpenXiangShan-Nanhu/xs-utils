@@ -4,10 +4,11 @@ import chisel3._
 import chisel3.experimental.hierarchy.IsLookupable
 import chisel3.util._
 import chisel3.util.experimental.BoringUtils
-import xs.utils.{FileRegisters, ResetRRArbiter}
+import xs.utils.FileRegisters
 import chisel3.experimental.{CheckBoring, EscapedWire, SourceInfo, SourceLine, SpecialWireInit, noPrefix, prefix}
 import org.chipsalliance.cde.config.{Field, Parameters}
 import xs.utils.queue.FastQueue
+import xs.utils.verilog.SvRRArbiter
 
 import scala.collection.mutable
 
@@ -292,7 +293,7 @@ object HardwareAssertion {
         val hwa_n = HAssertNode(desc = dedupDesc(cs.flatMap(_.node.desc)), level = level, name = name)
         val hwa_out = Wire(new HAssertBundle(hwa_n))
         if(cs.size > 1) {
-          val hwa_arb = Module(new ResetRRArbiter(gen = UInt(width.W), n = cs.size))
+          val hwa_arb = Module(new SvRRArbiter(gen = UInt(width.W), n = cs.size))
           val hwa_q = Module(new FastQueue(gen = UInt(width.W), size = 2))
           hwa_arb.io.in.zip(cs).foreach({ case (a, b) =>
             val hwa = BoringUtils.bore(b).bus.get
