@@ -30,33 +30,20 @@ object SvMaskToOHImpl extends VlogModule {
        |  input  wire  [INPUT_SIZE - 1:0] io_in,
        |  output wire  [INPUT_SIZE - 1:0] io_out
        |);
-       |  logic scan [INPUT_SIZE + 1];
-       |  logic [INPUT_SIZE - 1:0] edge_oh;
+       |  wire [INPUT_SIZE - 1:0] edge_oh;
        |
+       |  // Select the mask's inner edge, including non-contiguous masks; the encoder shares a prefix tree.
+       |  ${ctx.ref(SvPriorityEncoder1HImpl)} #(.INPUT_SIZE(INPUT_SIZE), .LOW_FIRST(int'(HIGH_MASK != 0))) u_edge (
+       |    .io_in(io_in), .io_out(edge_oh)
+       |  );
        |  generate
        |    if (HIGH_MASK != 0) begin : gen_high_mask
-       |      // Chisel equivalent: val scan = io_in.asBools.scanLeft(false.B)(_ || _)
-       |      //   edge_oh := VecInit(io_in.asBools.zip(scan.dropRight(1)).map { case (b, seen) => b && !seen }).asUInt
+       |      // Chisel equivalent: edge_oh := PriorityEncoderOH(io_in)
        |      //   io_out := (edge_oh >> 1).pad(INPUT_SIZE)
-       |      always_comb begin
-       |        scan[0] = 1'b0;
-       |        for (integer i = 0; i < INPUT_SIZE; i = i + 1) begin : gen_bit
-       |          scan[i + 1] = scan[i] | io_in[i];
-       |          edge_oh[i] = io_in[i] & ~scan[i];
-       |        end
-       |      end
        |      assign io_out = edge_oh >> 1;
        |    end else begin : gen_low_mask
-       |      // Chisel equivalent: val scan = io_in.asBools.scanRight(false.B)(_ || _)
-       |      //   edge_oh := VecInit(io_in.asBools.zip(scan.drop(1)).map { case (b, seen) => b && !seen }).asUInt
+       |      // Chisel equivalent: edge_oh := Reverse(PriorityEncoderOH(Reverse(io_in)))
        |      //   io_out := (edge_oh << 1)(INPUT_SIZE - 1, 0)
-       |      always_comb begin
-       |        scan[INPUT_SIZE] = 1'b0;
-       |        for (integer i = INPUT_SIZE - 1; i >= 0; i = i - 1) begin : gen_bit
-       |          scan[i] = scan[i + 1] | io_in[i];
-       |          edge_oh[i] = io_in[i] & ~scan[i + 1];
-       |        end
-       |      end
        |      assign io_out = edge_oh << 1;
        |    end
        |  endgenerate

@@ -28,31 +28,23 @@ object SvOHToMaskImpl extends VlogModule {
        |  parameter integer HIGH_MASK = 0
        |) (
        |  input  wire  [INPUT_SIZE - 1:0] io_in,
-       |  output logic [INPUT_SIZE - 1:0] io_out
+       |  output wire  [INPUT_SIZE - 1:0] io_out
        |);
-       |  logic scan [INPUT_SIZE + 1];
+       |  wire [INPUT_SIZE - 1:0] prefix;
        |
+       |  // Shift the inclusive prefix away from each asserted bit; zero-fill the strict-side boundary.
+       |  ${ctx.ref(SvPrefixReduceImpl(0))} #(.INPUT_SIZE(INPUT_SIZE), .HIGH_PREFIX(int'(HIGH_MASK == 0))) u_prefix (
+       |    .io_in(io_in), .io_out(prefix)
+       |  );
        |  generate
        |    if (HIGH_MASK != 0) begin : gen_high_mask
        |      // Chisel equivalent: io_out := VecInit(io_in.asBools
        |      //   .scanLeft(false.B)(_ || _).dropRight(1)).asUInt
-       |      always_comb begin
-       |        scan[0] = 1'b0;
-       |        for (integer i = 0; i < INPUT_SIZE; i = i + 1) begin : gen_bit
-       |          scan[i + 1] = scan[i] | io_in[i];
-       |          io_out[i] = scan[i];
-       |        end
-       |      end
+       |      assign io_out = prefix << 1;
        |    end else begin : gen_low_mask
        |      // Chisel equivalent: io_out := VecInit(io_in.asBools
        |      //   .scanRight(false.B)(_ || _).drop(1)).asUInt
-       |      always_comb begin
-       |        scan[INPUT_SIZE] = 1'b0;
-       |        for (integer i = INPUT_SIZE - 1; i >= 0; i = i - 1) begin : gen_bit
-       |          scan[i] = scan[i + 1] | io_in[i];
-       |          io_out[i] = scan[i + 1];
-       |        end
-       |      end
+       |      assign io_out = prefix >> 1;
        |    end
        |  endgenerate
        |endmodule

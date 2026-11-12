@@ -126,19 +126,32 @@ class SvMaskToOHSpec extends SimTestSpec {
       }
     }
 
-    it("inlines wrappers and registers one prefixed template for both directions and multiple widths") {
+    it("inlines wrappers and deduplicates the prefixed encoder dependencies across directions and widths") {
       GlobalData.synchronized {
         val saved = GlobalData.prefix
         try for (prefix <- Seq("", "soc_")) {
           GlobalData.prefix = prefix
-          val expectedName = prefix + "SvMaskToOH"
+          val expectedNames = Seq("SvPrefixReduceOR", "SvPriorityEncoder1H", "SvMaskToOH").map(prefix + _)
+          val registry = new VlogRegistry()
+          val sources = registry.sources(SvMaskToOHImpl)
+          assert(sources.map(_.moduleName) == expectedNames)
+          assert(sources.last.text.contains(
+            s"${prefix}SvPriorityEncoder1H #(.INPUT_SIZE(INPUT_SIZE), .LOW_FIRST(int'(HIGH_MASK != 0))) u_edge"))
+          assert(sources.last.text.contains("assign io_out = edge_oh >> 1;"))
+          assert(sources.last.text.contains("assign io_out = edge_oh << 1;"))
+          assert(!sources.last.text.contains("logic scan"))
+          val roots = Seq(SvOHToMaskImpl, SvMaskToOHImpl, SvPriorityEncoder1HImpl, SvPrefixReduceImpl(0))
+          val sharedNames = expectedNames :+ s"${prefix}SvOHToMask"
+          for (ordered <- Seq(roots, roots.reverse)) {
+            assert(registry.sources(ordered).map(_.moduleName).sorted == sharedNames.sorted)
+          }
           val annotations = ChiselStage.elaborate(new MaskToOHBank(Seq(1, 8, 65))).annotations.collect {
             case a: BlackBoxInlineAnno => a.name
           }.toSeq
-          assert(annotations == Seq(expectedName + ".sv"))
+          assert(annotations == (expectedNames.last +: expectedNames.init).map(_ + ".sv"))
           val rtl = ChiselStage.emitSystemVerilog(new MaskToOHBank(Seq(1, 8, 65)))
           val names = "(?m)^\\s*module\\s+(\\w+)".r.findAllMatchIn(rtl).map(_.group(1)).toSeq
-          assert(names.sorted == Seq("MaskToOHBank", expectedName).sorted)
+          assert(names.sorted == (expectedNames :+ "MaskToOHBank").sorted)
           assert(rtl.contains(".HIGH_MASK(0)") && rtl.contains(".HIGH_MASK(1)"))
         } finally GlobalData.prefix = saved
       }

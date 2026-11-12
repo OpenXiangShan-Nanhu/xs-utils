@@ -93,19 +93,26 @@ class SvOHToMaskSpec extends SimTestSpec {
       }
     }
 
-    it("inlines wrappers and registers one prefixed template for both directions and multiple widths") {
+    it("inlines wrappers and deduplicates the prefixed reduction dependency across directions and widths") {
       GlobalData.synchronized {
         val saved = GlobalData.prefix
         try for (prefix <- Seq("", "soc_")) {
           GlobalData.prefix = prefix
-          val expected = prefix + "SvOHToMask"
+          val expected = Seq("SvPrefixReduceOR", "SvOHToMask").map(prefix + _)
+          val sources = new VlogRegistry().sources(SvOHToMaskImpl)
+          assert(sources.map(_.moduleName) == expected)
+          assert(sources.last.text.contains(
+            s"${prefix}SvPrefixReduceOR #(.INPUT_SIZE(INPUT_SIZE), .HIGH_PREFIX(int'(HIGH_MASK == 0))) u_prefix"))
+          assert(sources.last.text.contains("assign io_out = prefix << 1;"))
+          assert(sources.last.text.contains("assign io_out = prefix >> 1;"))
+          assert(!sources.last.text.contains("logic scan"))
           val annotations = ChiselStage.elaborate(new OHToMaskBank(Seq(1, 8, 65))).annotations.collect {
             case a: BlackBoxInlineAnno => a.name
           }.toSeq
-          assert(annotations == Seq(expected + ".sv"))
+          assert(annotations == (expected.last +: expected.init).map(_ + ".sv"))
           val rtl = ChiselStage.emitSystemVerilog(new OHToMaskBank(Seq(1, 8, 65)))
           val names = "(?m)^\\s*module\\s+(\\w+)".r.findAllMatchIn(rtl).map(_.group(1)).toSeq
-          assert(names.sorted == Seq("OHToMaskBank", expected).sorted)
+          assert(names.sorted == (expected :+ "OHToMaskBank").sorted)
           assert(rtl.contains(".HIGH_MASK(0)") && rtl.contains(".HIGH_MASK(1)"))
         } finally GlobalData.prefix = saved
       }

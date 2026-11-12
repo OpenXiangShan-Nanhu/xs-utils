@@ -265,7 +265,7 @@ class SvVipArbiterSpec extends SimTestSpec {
           val cases = Seq(VipCase(2), VipCase(3, api = "vip"), VipCase(5, api = "vip"),
             VipCase(3, api = "rr", roundRobin = true), VipCase(5, roundRobin = true),
             VipCase(3, api = "shared"))
-          val expected = Seq("SvOHToMask", "SvPrefixReduceOR", "SvPriorityEncoder1H", "SvMux1H", "SvOHToUInt", "SvLivelockFreeArbiter").map(prefix + _)
+          val expected = Seq("SvPrefixReduceOR", "SvOHToMask", "SvPriorityEncoder1H", "SvMux1H", "SvOHToUInt", "SvLivelockFreeArbiter").map(prefix + _)
           assert(new VlogRegistry().sources(SvLivelockFreeArbiterImpl).map(_.moduleName) == expected)
           val annotations = ChiselStage.elaborate(new VipBank(cases)).annotations.collect {
             case a: BlackBoxInlineAnno => a.name
