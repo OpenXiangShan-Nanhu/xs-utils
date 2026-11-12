@@ -2,14 +2,28 @@ package xs.utils.verilog
 
 import scala.collection.mutable
 
+/** A discoverable singleton may provide one SV template or a family of specializations. */
+trait VlogModuleProvider {
+  def modules: Seq[VlogModule]
+}
+
 /** A stateless, parameterized SV definition. Hardware instances are not created here.
   * SV templates use always_comb/always_ff with procedural loops for bulk assignments;
   * generate-for is reserved for repeated module instances. Reduction arrays must be
   * assigned in dependency order, without a self-accumulating temporary variable.
   */
-trait VlogModule {
+trait VlogModule extends VlogModuleProvider {
+  final def modules: Seq[VlogModule] = Seq(this)
   def moduleName: String
   def render(ctx: VlogContext): String
+}
+
+object VlogModule {
+  /** Bind Scala expansion parameters in renderFn; SV instance parameters stay on the ExtModule. */
+  def apply(name: String)(renderFn: VlogContext => String): VlogModule = new VlogModule {
+    override val moduleName: String = name
+    override def render(ctx: VlogContext): String = renderFn(ctx)
+  }
 }
 
 final case class VlogSource(moduleName: String, text: String) {

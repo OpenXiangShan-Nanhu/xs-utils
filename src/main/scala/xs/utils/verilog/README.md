@@ -97,14 +97,28 @@ object SvMask {
 
 ## 2. 模板、命名和注册
 
-SV 模板必须是本库 `xs.utils.verilog` 包或其子包中的顶层 `object ... extends VlogModule`。
-[SvModuleMain](SvModuleMain.scala) 从本库的编译目录或 JAR 自动发现这些单例，
-不会扫描测试产物或其他依赖 JAR，也不需要在 xmake 中添加模块清单。
+单个 SV 模板使用本库 `xs.utils.verilog` 包或其子包中的顶层 `object ... extends VlogModule`。
+同一生成器有多种 Scala 展开结果时，可使用 `object ... extends VlogModuleProvider`，
+通过 `modules: Seq[VlogModule]` 提供全部模板，不必为每种结果另建一个 Impl 对象。
+`VlogModule` 本身也是 provider，其 `modules` 默认为仅包含自身。
+[SvModuleMain](SvModuleMain.scala) 从本库的编译目录或 JAR 自动发现这些 provider 单例，
+展开它们提供的模板；不会扫描测试产物或其他依赖 JAR，也不需要在 xmake 中添加模块清单。
 
 `moduleName` 是稳定的 SV 基础名，例如 `SvMask`。声明模块时使用 `${ctx.selfName}`；
 ExtModule 的 `desiredName` 使用同一个 registry 的 `nameOf`。
 registry 会捕获创建时的 `GlobalData.prefix`，因此声明、实例类型和文件名使用一致的前缀。
-不要在这些位置手工拼接前缀或把具体参数值写入模块名。
+不要在这些位置手工拼接前缀或把具体 **SV 实例参数** 值写入模块名。
+会改变 SV 定义的 **Scala 展开参数** 则必须对应不同的稳定模块名，避免不同实现重名。
+
+需要 Scala 展开参数的 Impl 使用两组构造参数：`new SvXXXImpl(zzzz)(yyyy)`。
+第一组 `zzzz` 绑定模板，决定生成代码和模块名；第二组 `yyyy` 只进入 ExtModule 的 SV 参数映射。
+伴生对象 `SvXXXImpl(zzzz)` 返回无硬件副作用的 `VlogModule`，内部可用
+`VlogModule(name)(renderFn)` 绑定 render 函数；Impl 注册该模板，其他 SV 模板则用
+`ctx.ref(SvXXXImpl(zzzz))` 声明依赖。render 在 registry 提供上下文时才执行，
+名称前缀和依赖由该上下文解析，不缓存某次 elaboration 的渲染文本。
+
+相同展开参数的新模板对象按模块名和源文本去重，不依赖对象身份或全局可变注册表。
+provider 的 `modules` 仅枚举独立导出所需的展开配置；正常 Chisel elaboration 按实际依赖注册。
 
 Impl 的 `io_` 端口统一声明在 `val io = IO(new Bundle { ... })` 中；
 单 bit valid/ready 的握手组使用 `Decoupled(payload)`，仅带单 bit valid 的组使用 `Valid(payload)`。

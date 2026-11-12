@@ -8,10 +8,10 @@ import scala.jdk.CollectionConverters._
 /** Export the production SV templates without constructing Chisel hardware. */
 object SvModuleMain {
   /** Inspect only this library's production artifact, not test/dependency classpaths.
-    * Loading is deferred until a class is known to be a VlogModule singleton.
+    * Loading is deferred until a class is known to be a VlogModuleProvider singleton.
     */
   def discover(): Seq[VlogModule] = {
-    val base = classOf[VlogModule]
+    val base = classOf[VlogModuleProvider]
     val artifact = Paths.get(base.getProtectionDomain.getCodeSource.getLocation.toURI)
     val entries = if (Files.isDirectory(artifact)) {
       val paths = Files.walk(artifact.resolve("xs/utils/verilog"))
@@ -28,8 +28,8 @@ object SvModuleMain {
     ).sorted.flatMap { name =>
       val cls = Class.forName(name.stripSuffix(".class").replace('/', '.'), false, base.getClassLoader)
       if (base.isAssignableFrom(cls)) {
-        Some(cls.getField("MODULE$").get(null).asInstanceOf[VlogModule])
-      } else None
+        cls.getField("MODULE$").get(null).asInstanceOf[VlogModuleProvider].modules
+      } else Seq.empty
     }
     require(modules.nonEmpty, "No VlogModule templates found in " + artifact)
     modules.sortBy(_.moduleName)

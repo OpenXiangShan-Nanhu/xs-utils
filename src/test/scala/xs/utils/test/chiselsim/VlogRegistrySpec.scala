@@ -139,6 +139,57 @@ class VlogRegistrySpec extends AnyFunSpec {
       assert(rtl.sources(RegistrySources.Root) == first)
     }
 
+    it("binds render functions lazily and resolves fresh dependency templates in the current namespace") {
+      var renders = 0
+      def leaf(invert: Boolean): VlogModule = VlogModule(if (invert) "FunctionInvert" else "FunctionWire") { ctx =>
+        renders += 1
+        val operator = if (invert) "~" else ""
+        s"module ${ctx.selfName}(input wire io_in, output wire io_out); assign io_out = ${operator}io_in; endmodule"
+      }
+      val root = VlogModule("FunctionRoot") { ctx =>
+        s"""module ${ctx.selfName}(input wire io_in, output wire [2:0] io_out);
+           |  ${ctx.ref(leaf(true))} a(.io_in(io_in), .io_out(io_out[0]));
+           |  ${ctx.ref(leaf(true))} b(.io_in(io_in), .io_out(io_out[1]));
+           |  ${ctx.ref(leaf(false))} c(.io_in(io_in), .io_out(io_out[2]));
+           |endmodule""".stripMargin
+      }
+      assert(renders == 0)
+      for (prefix <- Seq("soc_", "chip_", "")) withPrefix(prefix) {
+        val registry = new VlogRegistry
+        val sources = registry.sources(root)
+        assert(sources.map(_.moduleName) == Seq("FunctionInvert", "FunctionWire", "FunctionRoot").map(prefix + _))
+        assert(sources.last.text.contains(s"${prefix}FunctionInvert a("))
+        assert(sources.last.text.contains(s"${prefix}FunctionInvert b("))
+        assert(sources.last.text.contains(s"${prefix}FunctionWire c("))
+        assert(sources.head.text.contains("assign io_out = ~io_in;"))
+        assert(sources(1).text.contains("assign io_out = io_in;"))
+        assert(registry.sources(root) == sources)
+      }
+      assert(renders > 0)
+    }
+
+    it("validates names and conflicting definitions supplied by render functions") {
+      val a = VlogModule("FunctionDuplicate")(ctx => s"module ${ctx.selfName}; endmodule")
+      val b = VlogModule("FunctionDuplicate")(ctx => s"module ${ctx.selfName}; wire different; endmodule")
+      val error = intercept[IllegalArgumentException] {
+        withPrefix("") { new VlogRegistry }.sources(Seq(a, b))
+      }
+      assert(error.getMessage.contains("Conflicting SV definitions for FunctionDuplicate"))
+      intercept[IllegalArgumentException] {
+        withPrefix("") { new VlogRegistry }.sources(VlogModule("bad-name")(_ => ""))
+      }
+    }
+
+    it("detects cycles even when every function-bound dependency is a fresh template") {
+      def cycle(which: Int): VlogModule = VlogModule(s"FunctionCycle$which") { ctx =>
+        ctx.ref(cycle(1 - which))
+      }
+      val error = intercept[IllegalArgumentException] {
+        withPrefix("p_") { new VlogRegistry }.sources(cycle(0))
+      }
+      assert(error.getMessage.contains("p_FunctionCycle0 -> p_FunctionCycle1 -> p_FunctionCycle0"))
+    }
+
     it("registers each shared source once without creating dependency ExtModules") {
       for (prefix <- Seq("soc_", "chip_", "")) withPrefix(prefix) {
         val annotations = ChiselStage.elaborate(new RegistryTestTop).annotations.collect {
