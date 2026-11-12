@@ -7,8 +7,10 @@ import chisel3.util.{ArbiterIO, Decoupled, log2Ceil}
 /** Flat SV boundary for a low-index-priority Decoupled arbiter.
   * Lane zero occupies the least-significant DATA_WIDTH bits.
   */
-class SvArbiterImpl(dataWidth: Int = 32, inputSize: Int = 2)
-    extends VlogExtModule(Map("DATA_WIDTH" -> dataWidth, "INPUT_SIZE" -> inputSize)) {
+class SvArbiterImpl(dataWidth: Int = 32, inputSize: Int = 2) extends VlogExtModule(Map(
+  "DATA_WIDTH" -> dataWidth,
+  "INPUT_SIZE" -> inputSize
+)) {
   require(dataWidth > 0, "SvArbiter DATA_WIDTH must be positive")
   require(inputSize > 0, "SvArbiter INPUT_SIZE must be positive")
 
@@ -99,9 +101,7 @@ class SvArbiter[T <: Data](gen: T, n: Int) extends RawModule {
   val io = IO(new ArbiterIO(gen, n))
 
   if (n == 1) {
-    io.out.valid := io.in.head.valid
-    io.out.bits := io.in.head.bits
-    io.in.head.ready := io.out.ready
+    io.out <> io.in.head
     io.chosen := 0.U
   } else {
     require(gen.isWidthKnown && gen.getWidth > 0,
@@ -129,9 +129,7 @@ object SvArbiter {
     require(n > 0, "SvArbiter requires at least one input")
     if (n == 1) {
       val io = Wire(new ArbiterIO(gen, n))
-      io.out.valid := io.in.head.valid
-      io.out.bits := io.in.head.bits
-      io.in.head.ready := io.out.ready
+      io.out <> io.in.head
       io.chosen := 0.U
       io
     } else {

@@ -18,6 +18,7 @@ class SvDefaultsSpec extends AnyFunSpec {
           Module(new SvPriorityEncoder1HImpl()) -> SvPriorityEncoder1HImpl,
           Module(new SvOHToUIntImpl()) -> SvOHToUIntImpl,
           Module(new SvOHToMaskImpl()) -> SvOHToMaskImpl,
+          Module(new SvMaskToOHImpl()) -> SvMaskToOHImpl,
           Module(new SvTreePLRUImpl()) -> SvTreePLRUImpl,
           Module(new SvUIntToOHImpl()) -> SvUIntToOHImpl,
           Module(new SvPopcountImpl()) -> SvPopcountImpl,

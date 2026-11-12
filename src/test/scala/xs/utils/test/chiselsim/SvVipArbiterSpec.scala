@@ -90,8 +90,8 @@ class SvVipArbiterSpec extends SimTestSpec {
     val selected = choice(valid, vip, c.size)
     port.out.valid.expect((valid != 0).B, clue)
     port.chosen.expect(selected.U, clue)
-    port.ready.expect((if (ready && valid != 0) BigInt(1) << selected else BigInt(0)).U, clue)
-    expectPayload(port.out.bits, if (valid != 0) bits(selected) else BigInt(0), clue)
+    port.ready.expect((if (ready && (c.size == 1 || valid != 0)) BigInt(1) << selected else BigInt(0)).U, clue)
+    expectPayload(port.out.bits, if (c.size == 1 || valid != 0) bits(selected) else BigInt(0), clue)
     selected
   }
 

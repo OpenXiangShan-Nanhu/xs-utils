@@ -6,25 +6,26 @@ import chisel3.util.{ArbiterIO, Decoupled, DecoupledIO, log2Ceil}
 
 /** Shared VIP / round-robin core with an asynchronous active-high reset. */
 class SvLivelockFreeArbiterImpl(
-  dataWidth: Int = 32, inputSize: Int = 2, roundRobin: Boolean = false, selLatch: Boolean = false
-)
-    extends VlogExtModule(Map(
-      "DATA_WIDTH" -> dataWidth, "INPUT_SIZE" -> inputSize,
-      "ROUND_ROBIN" -> (if (roundRobin) 1 else 0), "SEL_LATCH" -> (if (selLatch) 1 else 0))) {
+  dataWidth: Int = 32, n: Int = 2, roundRobin: Boolean = false, selLatch: Boolean = false
+) extends VlogExtModule(Map(
+  "DATA_WIDTH" -> dataWidth, "INPUT_SIZE" -> n,
+  "ROUND_ROBIN" -> (if (roundRobin) 1 else 0),
+  "SEL_LATCH" -> (if (selLatch) 1 else 0)
+)) {
   require(dataWidth > 0, "SvLivelockFreeArbiter DATA_WIDTH must be positive")
-  require(inputSize > 0, "SvLivelockFreeArbiter INPUT_SIZE must be positive")
+  require(n > 0, "SvLivelockFreeArbiter INPUT_SIZE must be positive")
 
   val clock = IO(Input(Clock()))
   val reset = IO(Input(AsyncReset()))
   val io = IO(new Bundle {
     // Packed lane masks share the parameterized SV boundary; each bit is one lane.
     val in = new Bundle {
-      val valid = Input(UInt(inputSize.W))
-      val bits = Input(UInt((dataWidth * inputSize).W))
-      val ready = Output(UInt(inputSize.W))
+      val valid = Input(UInt(n.W))
+      val bits = Input(UInt((dataWidth * n).W))
+      val ready = Output(UInt(n.W))
     }
     val out = Decoupled(UInt(dataWidth.W))
-    val chosen = Output(UInt(math.max(1, log2Ceil(inputSize)).W))
+    val chosen = Output(UInt(math.max(1, log2Ceil(n)).W))
   })
 
   private val rtl = new VlogRegistry
@@ -185,9 +186,11 @@ object SvLivelockFreeArbiterImpl extends VlogModule {
        |""".stripMargin
 }
 
-/** Common inline Chisel adapter. Only the selected valid input is ready;
-  * idle bits/chosen are zero, including INPUT_SIZE=1. Reset is asynchronous.
-  * Both policies serve a continuously pending lane within inputSize transfers
+/** Common inline Chisel adapter. With one input, valid/bits/ready pass through
+  * without a core or selection latency; chosen is zero even when idle. For
+  * multiple inputs, only the selected valid input is ready and idle bits are zero.
+  * The multi-input core has an asynchronous reset.
+  * Both policies serve a continuously pending lane within n transfers
   * if reset stays inactive and the sink keeps accepting. This is Decoupled,
   * not Irrevocable: producers remain responsible for their payloads.
   * selLatch registers only the choice, adds one cycle of selection latency,
@@ -196,25 +199,29 @@ object SvLivelockFreeArbiterImpl extends VlogModule {
   * withdrawn requests may introduce a selection bubble; no payload is buffered.
   */
 class SvLivelockFreeArbiter[T <: Data](
-  gen: T, inputSize: Int, roundRobin: Boolean = false, selLatch: Boolean = false
+  gen: T, n: Int, roundRobin: Boolean = false, selLatch: Boolean = false
 ) extends Module {
-  val io = IO(new ArbiterIO(gen, inputSize))
-
-  require(inputSize > 0, "SvLivelockFreeArbiter requires at least one input")
-  require(gen.isWidthKnown && gen.getWidth > 0,
-    "SvLivelockFreeArbiter requires a known, positive data width")
+  require(n > 0, "SvLivelockFreeArbiter requires at least one input")
+  val io = IO(new ArbiterIO(gen, n))
   override def desiredName: String = "SvLivelockFreeArbiterWrapper"
 
-  private val core = Module(new SvLivelockFreeArbiterImpl(gen.getWidth, inputSize, roundRobin, selLatch))
-  core.clock := clock
-  core.reset := reset.asAsyncReset
-  core.io.in.valid := VecInit(io.in.map(_.valid)).asUInt
-  core.io.in.bits := VecInit(io.in.map(_.bits)).asUInt
-  core.io.out.ready := io.out.ready
-  io.out.valid := core.io.out.valid
-  io.out.bits := core.io.out.bits.asTypeOf(gen)
-  io.chosen := core.io.chosen
-  io.in.zip(core.io.in.ready.asBools).foreach { case (lane, ready) => lane.ready := ready }
+  if (n == 1) {
+    io.out <> io.in.head
+    io.chosen := 0.U
+  } else {
+    require(gen.isWidthKnown && gen.getWidth > 0,
+      "SvLivelockFreeArbiter requires a known, positive data width when n > 1")
+    val core = Module(new SvLivelockFreeArbiterImpl(gen.getWidth, n, roundRobin, selLatch))
+    core.clock := clock
+    core.reset := reset.asAsyncReset
+    core.io.in.valid := VecInit(io.in.map(_.valid)).asUInt
+    core.io.in.bits := VecInit(io.in.map(_.bits)).asUInt
+    core.io.out.ready := io.out.ready
+    io.out.valid := core.io.out.valid
+    io.out.bits := core.io.out.bits.asTypeOf(gen)
+    io.chosen := core.io.chosen
+    io.in.zip(core.io.in.ready.asBools).foreach { case (lane, ready) => lane.ready := ready }
+  }
 
   inlineInstance(this)
 }
@@ -222,11 +229,22 @@ class SvLivelockFreeArbiter[T <: Data](
 // Keep the defaulted Data overload below the sequence overloads in priority:
 // Chisel Vec is both Data and Seq, including the result of Vec.toSeq.
 private[verilog] trait SvLivelockFreeArbiterConfigFactory {
+  /** Single-input arbitration needs no wrapper or SV core; allow inferred payload widths. */
   def apply[T <: Data](
-    gen: T = UInt(32.W), inputSize: Int = 2, roundRobin: Boolean = false, selLatch: Boolean = false
+    gen: T = UInt(32.W), n: Int = 2, roundRobin: Boolean = false, selLatch: Boolean = false
   )(
     implicit sourceInfo: SourceInfo
-  ): ArbiterIO[T] = Module(new SvLivelockFreeArbiter(gen, inputSize, roundRobin, selLatch)).io
+  ): ArbiterIO[T] = {
+    require(n > 0, "SvLivelockFreeArbiter requires at least one input")
+    if (n == 1) {
+      val io = Wire(new ArbiterIO(gen, n))
+      io.out <> io.in.head
+      io.chosen := 0.U
+      io
+    } else {
+      Module(new SvLivelockFreeArbiter(gen, n, roundRobin, selLatch)).io
+    }
+  }
 }
 
 object SvLivelockFreeArbiter extends SvLivelockFreeArbiterConfigFactory {
@@ -242,9 +260,12 @@ object SvLivelockFreeArbiter extends SvLivelockFreeArbiterConfigFactory {
   ): DecoupledIO[T] = {
     require(in.nonEmpty, "SvLivelockFreeArbiter requires non-empty inputs")
     in.foreach(lane => requireIsHardware(lane, "SvLivelockFreeArbiter input"))
-    val arb = apply(chiselTypeOf(in.head.bits), in.size, roundRobin, selLatch)
-    arb.in.zip(in).foreach { case (sink, source) => sink <> source }
-    arb.out
+    if (in.size == 1) in.head
+    else {
+      val arb = apply(chiselTypeOf(in.head.bits), in.size, roundRobin, selLatch)
+      arb.in.zip(in).foreach { case (sink, source) => sink <> source }
+      arb.out
+    }
   }
 }
 

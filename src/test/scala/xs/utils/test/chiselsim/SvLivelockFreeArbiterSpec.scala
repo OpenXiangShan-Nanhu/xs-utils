@@ -2,6 +2,7 @@ package xs.utils.test.chiselsim
 
 import chisel3._
 import chisel3.util.{Decoupled, Valid}
+import circt.stage.ChiselStage
 import xs.utils.arb.VipArbiter
 import xs.utils.test.WrapperTestPayload
 import xs.utils.verilog._
@@ -40,13 +41,63 @@ class SvLivelockFreeArbiterSpec extends SimTestSpec {
   }
 
   private def check(port: VipPort, selected: Option[Int], ready: Boolean, bits: Seq[BigInt], clue: String): Unit = {
-    port.out.valid.expect(selected.nonEmpty.B, clue)
-    port.chosen.expect(selected.getOrElse(0).U, clue)
-    port.ready.expect(selected.filter(_ => ready).map(i => BigInt(1) << i).getOrElse(BigInt(0)).U, clue)
-    expectPayload(port.out.bits, selected.map(bits).getOrElse(BigInt(0)), clue)
+    if (port.in.size == 1) {
+      // A single lane is a direct Decoupled connection, even with selLatch enabled.
+      port.out.valid.expect(port.in.head.valid.peek(), clue)
+      port.chosen.expect(0.U, clue)
+      port.ready.expect((if (ready) 1 else 0).U, clue)
+      expectPayload(port.out.bits, bits.head, clue)
+    } else {
+      port.out.valid.expect(selected.nonEmpty.B, clue)
+      port.chosen.expect(selected.getOrElse(0).U, clue)
+      port.ready.expect(selected.filter(_ => ready).map(i => BigInt(1) << i).getOrElse(BigInt(0)).U, clue)
+      expectPayload(port.out.bits, selected.map(bits).getOrElse(BigInt(0)), clue)
+    }
   }
 
   describe("SvLivelockFreeArbiter SEL_LATCH") {
+    it("bypasses selection and the SV core for one input across wrappers and factories") {
+      val cases = for (rr <- Seq(false, true); api <- Seq("sv", "factory", "shared"))
+        yield VipCase(1, 66, "vecBundle", api, rr, selLatch = true)
+      val rtl = ChiselStage.emitSystemVerilog(new VipBank(cases))
+      assert(!rtl.contains("module SvLivelockFreeArbiter #("))
+      simulate(new VipBank(cases)) { dut =>
+        for (reset <- Seq(false, true); valid <- Seq(false, true); ready <- Seq(false, true)) {
+          dut.reset.poke(reset.B)
+          cases.zip(dut.io).zipWithIndex.foreach { case ((_, port), i) =>
+            val bits = (BigInt(i + 1) << 60) | BigInt(0x12345)
+            drive(port, if (valid) 1 else 0, ready, Seq(bits))
+            port.out.valid.expect(valid.B)
+            port.ready.expect((if (ready) 1 else 0).U)
+            port.chosen.expect(0.U)
+            expectPayload(port.out.bits, bits)
+          }
+        }
+      }
+
+      ChiselStage.emitCHIRRTL(new Module {
+        val in = IO(Flipped(Decoupled(UInt(13.W))))
+        for (rr <- Seq(false, true))
+          assert(SvLivelockFreeArbiter(Seq(in), rr, selLatch = true) eq in)
+        assert(SvVipArbiter(Seq(in), selLatch = true) eq in)
+        assert(SvRRArbiter(Seq(in), selLatch = true) eq in)
+      })
+    }
+
+    it("infers single-input payload widths without constructing a parameterized SV core") {
+      ChiselStage.emitCHIRRTL(new Module {
+        val wrapper = Module(new SvLivelockFreeArbiter(UInt(), 1, selLatch = true))
+        wrapper.io.in.head.valid := true.B
+        wrapper.io.in.head.bits := 7.U(13.W)
+        wrapper.io.out.ready := true.B
+
+        val factory = SvLivelockFreeArbiter(UInt(), n = 1, roundRobin = true, selLatch = true)
+        factory.in.head.valid := true.B
+        factory.in.head.bits := 7.U(13.W)
+        factory.out.ready := true.B
+      })
+    }
+
     it("adds one selection cycle, holds stalled grants, recovers withdrawn requests and clears on async reset") {
       val cases = Seq(false, true).map(rr => VipCase(5, 66, "vecBundle", "shared", rr, selLatch = true))
       simulate(new VipBank(cases)) { dut =>
@@ -236,13 +287,14 @@ class SvLivelockFreeArbiterSpec extends SimTestSpec {
       for (n <- Seq(1, 3)) simulate(new LatchedArbiterFactories(n)) { dut =>
         val bits = Seq.tabulate(n)(i => (BigInt(i + 1) << 61) | i)
         dut.io.in.zipWithIndex.foreach { case (lane, i) => lane.valid.poke(true.B); pokePayload(lane.bits, bits(i)) }
-        dut.io.out.foreach { out => out.ready.poke(true.B); out.valid.expect(false.B) }
+        dut.io.out.foreach(_.ready.poke(true.B))
+        dut.io.out.foreach(_.valid.expect((n == 1).B))
         dut.clock.step()
         var transfers = 0
         for (cycle <- 0 until 48) {
           val ready = cycle % 7 >= 3
           for (api <- 0 until 6) {
-            val first = if (Set(4, 5, 7).contains(api)) 1 else 0
+            val first = if (Set(2, 3, 5).contains(api)) 1 else 0
             val selected = (first + transfers) % n
             dut.io.out(api).ready.poke(ready.B)
             dut.io.out(api).valid.expect(true.B)

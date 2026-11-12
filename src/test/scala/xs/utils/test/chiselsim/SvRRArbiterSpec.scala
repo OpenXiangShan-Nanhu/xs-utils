@@ -162,12 +162,14 @@ class SvRRArbiterSpec extends SimTestSpec {
     port.actualChosen.expect(d.chosen.U, s"$clue actual chosen")
     port.referenceChosen.expect((if (d.outValid) d.chosen else port.in.size - 1).U, s"$clue reference chosen")
     d.ready.zipWithIndex.foreach { case (ready, i) =>
-      port.actualInReady(i).expect(ready.B, s"$clue actual ready[$i]")
+      port.actualInReady(i).expect((if (port.in.size == 1) port.actualOut.ready.peek().litToBoolean else ready).B,
+        s"$clue actual ready[$i]")
       // Native RR may also ready invalid lanes; valid-lane transfers must agree.
       if (port.in(i).valid.peek().litValue != 0)
         port.referenceInReady(i).expect(ready.B, s"$clue reference ready[$i]")
     }
-    expectPayload(port.actualOut.bits, if (d.outValid) bits(d.chosen) else BigInt(0), s"$clue actual bits")
+    expectPayload(port.actualOut.bits, if (port.in.size == 1 || d.outValid) bits(d.chosen) else BigInt(0),
+      s"$clue actual bits")
     expectPayload(port.referenceOut.bits, bits(if (d.outValid) d.chosen else bits.size - 1), s"$clue reference bits")
   }
 
@@ -320,7 +322,7 @@ class SvRRArbiterSpec extends SimTestSpec {
           dut.io.out.ready.poke(false.B)
           dut.io.out.valid.expect(false.B, clue)
           dut.io.inReady.expect(false.B, clue)
-          expectPayload(dut.io.out.bits, BigInt(0), s"$clue invalid bits")
+          expectPayload(dut.io.out.bits, bits, s"$clue invalid bits")
         }
 
       def checkFactory(gen: => Data, bits: BigInt, clue: String): Unit =
@@ -337,7 +339,7 @@ class SvRRArbiterSpec extends SimTestSpec {
           dut.io.out.ready.poke(false.B)
           dut.io.out.valid.expect(false.B, clue)
           dut.io.inReady.expect(false.B, clue)
-          expectPayload(dut.io.out.bits, BigInt(0), s"$clue invalid bits")
+          expectPayload(dut.io.out.bits, bits, s"$clue invalid bits")
         }
 
       val cases = Seq(
@@ -350,19 +352,19 @@ class SvRRArbiterSpec extends SimTestSpec {
       }
     }
 
-    it("uses the shared core and selected-only ready semantics for one input") {
+    it("bypasses the shared core and forwards valid, bits and ready for one input") {
       val rtl = ChiselStage.emitSystemVerilog(new SvRRArbiterN1FactoryTop(new WrapperTestPacket(17)))
-      assert(rtl.contains("module SvLivelockFreeArbiter #("))
-      assert(rtl.contains(".ROUND_ROBIN(1)"))
+      assert(!rtl.contains("module SvLivelockFreeArbiter #("))
       assert(!rtl.contains("module SvRRArbiterWrapper"))
       simulate(new SvRRArbiterN1FactoryTop(new WrapperTestPacket(17))) { dut =>
         pokePayload(dut.io.in.bits, BigInt(31))
         for (valid <- Seq(false, true); ready <- Seq(false, true)) {
           dut.io.in.valid.poke(valid.B)
           dut.io.out.ready.poke(ready.B)
-          dut.io.inReady.expect((valid && ready).B)
+          dut.io.inReady.expect(ready.B)
           dut.io.out.valid.expect(valid.B)
-          expectPayload(dut.io.out.bits, if (valid) BigInt(31) else BigInt(0))
+          dut.io.chosen.expect(0.U)
+          expectPayload(dut.io.out.bits, BigInt(31))
         }
       }
     }
