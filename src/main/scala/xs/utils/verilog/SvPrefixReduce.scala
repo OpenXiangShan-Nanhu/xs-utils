@@ -165,7 +165,7 @@ object SvPrefixReduceImpl extends VlogModuleProvider {
        |        prefix_terms[i][LEVELS] = padded_input[i];
        |      else
        |        prefix_terms[i][LEVELS] = IDENTITY;
-       |      reduced_bits[i] = $operator prefix_terms[i];
+       |      reduced_bits[i] = ${operator}prefix_terms[i];
        |    end
        |  end
        |endmodule

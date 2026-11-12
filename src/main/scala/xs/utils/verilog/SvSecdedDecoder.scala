@@ -64,6 +64,7 @@ object SvSecdedDecoderImpl extends VlogModule {
        |  logic [HAMMING_SIZE - 1:0] hamming_word;
        |  logic [HAMMING_SIZE - 1:0] syndrome_terms [HAMMING_BITS];
        |  logic [HAMMING_BITS - 1:0] syndrome;
+       |  integer position_stage [DATA_BITS][HAMMING_BITS + 1];
        |  wire overall_error;
        |
        |  // Chisel equivalent: hamming_word := VecInit((1 to HAMMING_SIZE).map(p =>
@@ -93,28 +94,20 @@ object SvSecdedDecoderImpl extends VlogModule {
        |  assign io_ce = overall_error;
        |  assign io_ue = (|syndrome) & ~overall_error;
        |
-       |  // Insert each parity position into a zero-based data index. All calls
-       |  // use elaboration constants; the stage array is not runtime state.
-       |  // Chisel equivalent: (0 until HAMMING_BITS).scanLeft(bit_index + 1) {
-       |  //   (p, j) => p + (if (p >= (1 << j)) 1 else 0) }.last
-       |  function automatic integer data_position(input integer bit_index);
-       |    integer position_stage [HAMMING_BITS + 1];
-       |    begin
-       |      position_stage[0] = bit_index + 1;
-       |      for (integer j = 0; j < HAMMING_BITS; j = j + 1) begin
-       |        position_stage[j + 1] = position_stage[j] + ((position_stage[j] >= (1 << j)) ? 1 : 0);
-       |      end
-       |      data_position = position_stage[HAMMING_BITS];
-       |    end
-       |  endfunction
-       |
+       |  // Each row inserts parity positions into one zero-based data index.
+       |  // Position stages depend only on loop indices and parameters.
+       |  // Chisel equivalent (each i): (0 until HAMMING_BITS).scanLeft(i + 1) {
+       |  //   (p, j) => p + (if (p >= (1 << j)) 1 else 0) }
        |  // Chisel equivalent: io_out := io_in_data ^ VecInit(
        |  //   (1 to HAMMING_SIZE).filterNot(isPow2).map(p =>
        |  //     overall_error && (syndrome === p.U))).asUInt
        |  always_comb begin
        |    for (integer i = 0; i < DATA_BITS; i = i + 1) begin
-       |      io_out[i] = io_in_data[i] ^
-       |        (overall_error & (syndrome == HAMMING_BITS'(data_position(i))));
+       |      position_stage[i][0] = i + 1;
+       |      for (integer j = 0; j < HAMMING_BITS; j = j + 1) begin
+       |        position_stage[i][j + 1] = position_stage[i][j] + ((position_stage[i][j] >= (1 << j)) ? 1 : 0);
+       |      end
+       |      io_out[i] = io_in_data[i] ^ (overall_error & (syndrome == HAMMING_BITS'(position_stage[i][HAMMING_BITS])));
        |    end
        |  end
        |endmodule

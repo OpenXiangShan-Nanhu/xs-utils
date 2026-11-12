@@ -98,13 +98,12 @@ object SvLivelockFreeArbiterImpl extends VlogModule {
        |    .io_in(priority_valid), .io_out(first_priority)
        |  );
        |
+       |  assign priority_valid = io_in_valid & higher_mask;
+       |  assign pointer_valid = |(io_in_valid & pointer);
+       |  assign other_valid = |(io_in_valid & ~pointer);
+       |  assign circular_choice = (|priority_valid) ? first_priority : first_valid;
+       |
        |  generate
-       |    // VIP stores the preferred lane; RR stores the last fired lane.
-       |    assign priority_valid = io_in_valid & higher_mask;
-       |    assign pointer_valid = |(io_in_valid & pointer);
-       |    assign other_valid = |(io_in_valid & ~pointer);
-       |    // Chisel equivalent: circular_choice := Mux(priority_valid.orR, first_priority, first_valid)
-       |    assign circular_choice = (|priority_valid) ? first_priority : first_valid;
        |    if (ROUND_ROBIN != 0) begin : gen_round_robin
        |      assign selected = circular_choice;
        |      assign next_pointer = selected;
