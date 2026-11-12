@@ -2,7 +2,10 @@ package xs.utils.verilog
 
 import scala.collection.mutable
 
-/** A discoverable singleton may provide one SV template or a family of specializations. */
+/** A discoverable Scala singleton supplies templates without constructing Chisel hardware.
+  * Parameterized generators use modules = Seq(apply()) to export their Scala defaults.
+  * No registration list or prior singleton initialization is needed for standalone discovery.
+  */
 trait VlogModuleProvider {
   def modules: Seq[VlogModule]
 }

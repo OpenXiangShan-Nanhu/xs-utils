@@ -129,14 +129,13 @@ class SvPrefixReduceSpec extends SimTestSpec {
       }
     }
 
-    it("discovers all specializations and registers each once across sizes and directions") {
+    it("discovers Scala defaults and registers requested specializations once across sizes and directions") {
       val templates = (0 to 2).map(SvPrefixReduceImpl(_))
       val registry = new VlogRegistry
-      assert(registry.sources(SvPrefixReduceImpl.modules) == registry.sources(templates))
+      assert(registry.sources(SvPrefixReduceImpl.modules) == registry.sources(SvPrefixReduceImpl()))
       assert(templates.forall(template => template.modules == Seq(template)))
       val discovered = SvModuleMain.discover().filter(_.moduleName.startsWith("SvPrefixReduce"))
-      assert(discovered.size == templates.size)
-      assert(discovered.map(_.moduleName).sorted == templates.map(_.moduleName).sorted)
+      assert(discovered.map(_.moduleName) == Seq("SvPrefixReduceOR"))
       val rediscovered = SvModuleMain.discover().filter(_.moduleName.startsWith("SvPrefixReduce"))
       assert(registry.sources(rediscovered) == registry.sources(discovered))
       val sources = registry.sources(templates ++ (0 to 2).reverse.map(SvPrefixReduceImpl(_)))

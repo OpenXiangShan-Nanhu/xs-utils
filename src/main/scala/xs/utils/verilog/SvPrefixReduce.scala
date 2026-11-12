@@ -26,7 +26,6 @@ class SvPrefixReduceImpl(op: Int = 0)(inputSize: Int = 32, highPrefix: Boolean =
 }
 
 object SvPrefixReduceImpl extends VlogModuleProvider {
-  // Explicit standalone-export variants; normal elaboration binds only the requested operation.
   override def modules: Seq[VlogModule] = (0 to 2).map(apply)
 
   def apply(op: Int = 0): VlogModule = {

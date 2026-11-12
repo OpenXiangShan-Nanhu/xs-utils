@@ -97,12 +97,22 @@ object SvMask {
 
 ## 2. 模板、命名和注册
 
-单个 SV 模板使用本库 `xs.utils.verilog` 包或其子包中的顶层 `object ... extends VlogModule`。
-同一生成器有多种 Scala 展开结果时，可使用 `object ... extends VlogModuleProvider`，
-通过 `modules: Seq[VlogModule]` 提供全部模板，不必为每种结果另建一个 Impl 对象。
+单个 SV 模板使用任意包中的 `object ... extends VlogModule`。
+有 Scala 展开参数的生成器使用 `object ... extends VlogModuleProvider`，通过
+`override def modules: Seq[VlogModule] = Seq(apply())` 提供 **Scala 默认参数** 对应的模板。
 `VlogModule` 本身也是 provider，其 `modules` 默认为仅包含自身。
-[SvModuleMain](SvModuleMain.scala) 从本库的编译目录或 JAR 自动发现这些 provider 单例，
-展开它们提供的模板；不会扫描测试产物或其他依赖 JAR，也不需要在 xmake 中添加模块清单。
+不需要为每种展开结果另建 Impl 对象，也不需要维护注册清单、资源文件或全局可变注册表。
+
+[SvModuleMain](SvModuleMain.scala) 自动扫描运行时 classpath 中的编译目录和 JAR，
+不限制包名或库的来源；支持直接或间接实现 `VlogModuleProvider` 的 Scala 单例。
+扫描先通过 `Class.forName(name, false, loader)` 检查类信息，只在确认是 provider 后读取
+静态 `MODULE$` 字段，触发单例初始化，再获取 `modules`。无需事先访问 provider，也无需实例化硬件。
+顶层单例以及嵌套在单例中的静态单例可被发现；普通类、方法局部对象、需要外部类实例的成员对象不会被构造。
+因此 provider 的初始化必须不依赖 Chisel elaboration 上下文。
+
+扫描不会初始化无关单例。无法加载或链接的候选类会输出诊断并跳过（例如无关库的可选依赖缺失）；
+已识别 provider 的初始化或默认模板生成失败则会终止导出，不能静默遗漏。
+导出环境应提供生成器的完整依赖，并检查扫描诊断。
 
 `moduleName` 是稳定的 SV 基础名，例如 `SvMask`。声明模块时使用 `${ctx.selfName}`；
 ExtModule 的 `desiredName` 使用同一个 registry 的 `nameOf`。
@@ -118,7 +128,8 @@ registry 会捕获创建时的 `GlobalData.prefix`，因此声明、实例类型
 名称前缀和依赖由该上下文解析，不缓存某次 elaboration 的渲染文本。
 
 相同展开参数的新模板对象按模块名和源文本去重，不依赖对象身份或全局可变注册表。
-provider 的 `modules` 仅枚举独立导出所需的展开配置；正常 Chisel elaboration 按实际依赖注册。
+provider 的 `modules` 提供独立导出的 Scala 默认配置；正常 Chisel elaboration 按实际依赖注册。
+默认模板引用的非默认依赖仍会递归导出。例如默认模板依赖 XOR 前缀时，XOR 实现不会被省略。
 
 Impl 的 `io_` 端口统一声明在 `val io = IO(new Bundle { ... })` 中；
 单 bit valid/ready 的握手组使用 `Decoupled(payload)`，仅带单 bit valid 的组使用 `Valid(payload)`。
@@ -226,10 +237,58 @@ Scala 同名重载不应同时定义多套默认参数；可保留无配置参�
 在仓库根目录运行：
 
 ```sh
-xmake svmodule                              # 导出全部模板
+xmake svmodule                              # 导出所有 provider 的 Scala 默认配置及依赖
 xmake svmodule -l                           # 导出并逐模块 lint
 xmake svmodule --lint --linter=verilator     # 完整选项写法
 ```
+
+库的调用者可直接使用统一入口；不需要提供模块清单：
+
+```scala
+import java.nio.file.Paths
+import xs.utils.verilog.SvModuleMain
+
+SvModuleMain.exportAll(Paths.get("build/svmodule"))
+```
+
+默认使用当前线程的 context class loader（为空时回退到库自身 loader），收集 JVM classpath、
+URLClassLoader 及其父级的目录/JAR，并跟随 JAR manifest 中的本地 `Class-Path` 引用。
+运行时应包含调用者及其依赖；若测试产物也在 classpath 中，其中的 provider 同样会被发现。
+要限制范围，或使用无法枚举路径的自定义 class loader，可显式指定扫描根目录/JAR：
+
+```scala
+val roots = Seq(Paths.get("my-project/classes"), Paths.get("dependency.jar"))
+val modules = SvModuleMain.discover(roots, projectClassLoader)
+SvModuleMain.write(Paths.get("build/svmodule"), modules)
+```
+
+也提供 `discover()`、`discover(loader)` 和 `exportAll(output, loader)`。
+显式路径只控制根模板的发现范围，生成过程中通过 `ctx.ref` 引用的依赖仍会被递归收集。
+不自动枚举任意自定义 loader 的内存类、嵌套 JAR 或 JPMS module-path；这些环境需提供普通目录/JAR
+及可加载对应类的 loader。依赖库和调用者必须使用同一份 `VlogModuleProvider` 类型。
+
+例如，参数化生成器只需按如下约定编写：
+
+```scala
+object MyGeneratorImpl extends VlogModuleProvider {
+  override def modules: Seq[VlogModule] = Seq(apply())
+
+  def apply(width: Int = 32): VlogModule = {
+    require(width > 0)
+    VlogModule(s"MyGenerator$width") { ctx =>
+      s"""module ${ctx.selfName}(input wire [${width - 1}:0] in,
+         |                          output wire [${width - 1}:0] out);
+         |  assign out = in;
+         |endmodule
+         |""".stripMargin
+    }
+  }
+}
+```
+
+默认会发现并导出 `MyGenerator32`。Scala 默认参数由正常的 `apply()` 调用解析，不反射构造 Chisel 类。
+`SvPrefixReduceImpl.modules` 同样默认只提供 OR；若需要显式导出全部运算，可使用
+`SvModuleMain.write(output, (0 to 2).map(SvPrefixReduceImpl(_)))`。
 
 输出位于 `build/svmodule/`，每个模块一个 `.sv` 文件，`filelist.f` 按依赖顺序列出文件名。
 导出保留 SV 参数声明和默认值，不需要 ChiselStage、firtool 或每模块一个生成 Top。
