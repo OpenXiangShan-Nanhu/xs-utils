@@ -1,15 +1,15 @@
 [submodule "dep/rocket-chip"]
 	path = dep/rocket-chip
-	url = https://github.com/OpenXiangShan-Nanhu/rocket-chip
+	url = git@github.com:OpenXiangShan-Nanhu/rocket-chip
 [submodule "dep/cde"]
 	path = dep/cde
-	url = https://github.com/chipsalliance/cde.git
+	url = git@github.com:chipsalliance/cde.git
 [submodule "dep/hardfloat"]
 	path = dep/hardfloat
-	url = https://github.com/ucb-bar/berkeley-hardfloat.git
+	url = git@github.com:ucb-bar/berkeley-hardfloat.git
 [submodule "dep/diplomacy"]
 	path = dep/diplomacy
-	url = https://github.com/chipsalliance/diplomacy.git
+	url = git@github.com:chipsalliance/diplomacy.git
 [submodule "dep/chisel"]
 	path = dep/chisel
-	url = https://github.com/OpenXiangShan-Nanhu/chisel.git
+	url = git@github.com:OpenXiangShan-Nanhu/chisel.git
