@@ -41,7 +41,7 @@ object SvArbiterImpl extends VlogModule {
        |) (
        |  input  wire  [INPUT_SIZE - 1:0]                                   io_in_valid,
        |  input  wire  [INPUT_SIZE * DATA_WIDTH - 1:0]                      io_in_bits,
-       |  output logic [INPUT_SIZE - 1:0]                                   io_in_ready,
+       |  output wire  [INPUT_SIZE - 1:0]                                   io_in_ready,
        |  output wire                                                       io_out_valid,
        |  output wire  [DATA_WIDTH - 1:0]                                   io_out_bits,
        |  input  wire                                                       io_out_ready,
@@ -50,19 +50,17 @@ object SvArbiterImpl extends VlogModule {
        |  localparam integer CHOSEN_WIDTH = (INPUT_SIZE > 1) ? $$clog2(INPUT_SIZE) : 1;
        |
        |  // Each ready lane sees only higher-priority requests, even when invalid.
-       |  logic valid_prefix [INPUT_SIZE + 1];
+       |  wire [INPUT_SIZE - 1:0] valid_prefix;
        |  wire [CHOSEN_WIDTH - 1:0] first_valid;
        |  logic [INPUT_SIZE - 1:0] chosen_oh;
        |
-       |  // Chisel equivalent: valid_prefix := VecInit(io_in_valid.asBools.scanLeft(false.B)(_ || _))
-       |  //   io_in_ready := VecInit(valid_prefix.dropRight(1).map(v => io_out_ready && !v)).asUInt
-       |  always_comb begin
-       |    valid_prefix[0] = 1'b0;
-       |    for (integer i = 0; i < INPUT_SIZE; i = i + 1) begin : gen_ready
-       |      valid_prefix[i + 1] = valid_prefix[i] | io_in_valid[i];
-       |      io_in_ready[i] = io_out_ready && !valid_prefix[i];
-       |    end
-       |  end
+       |  // Chisel equivalent: valid_prefix := VecInit(io_in_valid.asBools.scanLeft(false.B)(_ || _).tail).asUInt
+       |  //   io_in_ready := Fill(INPUT_SIZE, io_out_ready) & ~(valid_prefix << 1)(INPUT_SIZE - 1, 0)
+       |  // Shift the inclusive prefix to exclude each lane itself; zero-fill lane zero, including INPUT_SIZE=1.
+       |  ${ctx.ref(SvPrefixReduceImpl(0))} #(.INPUT_SIZE(INPUT_SIZE), .HIGH_PREFIX(0)) u_valid_prefix (
+       |    .io_in(io_in_valid), .io_out(valid_prefix)
+       |  );
+       |  assign io_in_ready = {INPUT_SIZE{io_out_ready}} & ~(valid_prefix << 1);
        |  assign io_out_valid = |io_in_valid;
        |
        |  ${ctx.ref(SvPriorityEncoderImpl)} #(.INPUT_SIZE(INPUT_SIZE)) u_choice (

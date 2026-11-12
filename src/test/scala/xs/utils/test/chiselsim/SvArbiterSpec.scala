@@ -208,12 +208,12 @@ class SvArbiterSpec extends SimTestSpec {
         val masks = (BigInt(0) until (BigInt(1) << c.size)) ++
           Seq.fill(randomCycles)(BigInt(c.size, rng))
 
-        masks.zipWithIndex.foreach { case (mask, cycle) =>
+        val probes = masks.flatMap(mask => Seq(false, true).map(ready => (mask, ready)))
+        probes.zipWithIndex.foreach { case ((mask, outReady), cycle) =>
           val data = Seq.tabulate(c.size)(_ => BigInt(c.width, rng))
           val chosen = lowestValid(mask, c.size)
           val expectedBits = data(chosen)
           val expectedValid = mask != 0
-          val outReady = (cycle & 1) == 0
 
           for (i <- 0 until c.size) {
             port.in(i).valid.poke(mask.testBit(i).B)
@@ -264,10 +264,13 @@ class SvArbiterSpec extends SimTestSpec {
     it("matches native Arbiter and a software reference for Bundle and Vec[Bundle] payloads") {
       exercise(Seq(
         SvArbiterCase(1, 1),
+        SvArbiterCase(8, 2),
         SvArbiterCase(5, 3),
         SvArbiterCase(17, 5),
         SvArbiterCase(51, 7, "vecBundle"),
-        SvArbiterCase(66, 4, "vecBundle")
+        SvArbiterCase(66, 4, "vecBundle"),
+        SvArbiterCase(17, 8),
+        SvArbiterCase(51, 9, "vecBundle")
       ))
     }
 
@@ -334,15 +337,20 @@ class SvArbiterSpec extends SimTestSpec {
 
     }
 
-    it("registers the prefixed encoder and mux dependency closure without a Chisel helper instance") {
+    it("registers the prefixed prefix reducer, encoder, and mux dependency closure without a Chisel helper instance") {
       for (prefix <- Seq("", "soc_", "chip_")) withPrefix(prefix) {
         val registry = new VlogRegistry
         val sources = registry.sources(SvArbiterImpl)
-        val expectedNames = Seq(s"${prefix}SvPriorityEncoder", s"${prefix}SvMux1H", s"${prefix}SvArbiter")
+        val expectedNames = Seq("SvPrefixReduceOR", "SvPriorityEncoder", "SvMux1H", "SvArbiter").map(prefix + _)
         assert(sources.map(_.moduleName) == expectedNames)
         assert(sources.map(_.fileName) == expectedNames.map(_ + ".sv"))
         assert(sources == registry.sources(SvArbiterImpl))
         val arbiterSource = sources.last.text
+        assert(arbiterSource.contains(
+          s"${prefix}SvPrefixReduceOR #(.INPUT_SIZE(INPUT_SIZE), .HIGH_PREFIX(0)) u_valid_prefix"))
+        assert(arbiterSource.contains(".io_in(io_in_valid), .io_out(valid_prefix)"))
+        assert(arbiterSource.contains("assign io_in_ready = {INPUT_SIZE{io_out_ready}} & ~(valid_prefix << 1);"))
+        assert(!arbiterSource.contains("valid_prefix[i + 1]"))
         assert(arbiterSource.contains(s"${prefix}SvPriorityEncoder #(.INPUT_SIZE(INPUT_SIZE)) u_choice"))
         assert(arbiterSource.contains(
           s"${prefix}SvMux1H #(.DATA_WIDTH(DATA_WIDTH), .INPUT_SIZE(INPUT_SIZE)) u_out_bits"))
@@ -366,13 +374,14 @@ class SvArbiterSpec extends SimTestSpec {
         val clue = s"muxFirst=$muxFirst prefix=$prefix"
         val elaborated = ChiselStage.elaborate(new SvArbiterMuxDependencyTop(muxFirst))
         val attachments = elaborated.annotations.collect { case a: BlackBoxInlineAnno => a }.toSeq
-        val expectedFiles = Seq(s"${prefix}SvArbiter.sv", s"${prefix}SvMux1H.sv", s"${prefix}SvPriorityEncoder.sv")
+        val expectedFiles = Seq("SvArbiter", "SvMux1H", "SvPrefixReduceOR", "SvPriorityEncoder").map(prefix + _ + ".sv")
         assert(attachments.map(_.name).sorted == expectedFiles.sorted, clue)
         val rtl = ChiselStage.emitSystemVerilog(new SvArbiterMuxDependencyTop(muxFirst))
         val modules = """(?m)^\s*module\s+(\w+)\b""".r.findAllMatchIn(rtl).map(_.group(1)).toSeq
-        assert(modules.toSet == Set("SvArbiterMuxDependencyTop", s"${prefix}SvArbiter", s"${prefix}SvMux1H", s"${prefix}SvPriorityEncoder"),
+        assert(modules.toSet == Set("SvArbiterMuxDependencyTop", s"${prefix}SvArbiter", s"${prefix}SvMux1H",
+          s"${prefix}SvPrefixReduceOR", s"${prefix}SvPriorityEncoder"),
           s"$clue modules=$modules")
-        assert(modules.size == 4, s"$clue modules=$modules")
+        assert(modules.size == 5, s"$clue modules=$modules")
         val muxInstance = ("""(?m)^\s*""" + prefix + """SvMux1H\s*#\s*\(""").r
         val topBody = rtl.substring(rtl.indexOf("module SvArbiterMuxDependencyTop")).split("endmodule")(0)
         val arbiterBody = rtl.substring(rtl.indexOf(s"module ${prefix}SvArbiter #(")).split("endmodule")(0)
