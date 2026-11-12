@@ -544,7 +544,7 @@ class SvFastQueue[T <: Data](gen: T = UInt(32.W), size: Int = 2, pipe:Boolean = 
   io.free := q.io.free
 
   q.clock := clock
-  q.reset := reset
+  q.reset := reset.asAsyncReset
 
   inlineInstance(this)
 }

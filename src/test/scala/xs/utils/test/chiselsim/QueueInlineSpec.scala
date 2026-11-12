@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util.Decoupled
 import circt.stage.ChiselStage
 import xs.utils.test.WrapperTestPacket
-import xs.utils.verilog.{SvFastQueue, SvMimoQueue}
+import xs.utils.verilog.{SvFastQueue, SvMimoQueue, SvMimoQueueImpl, SvPopcountImpl, VlogRegistry}
 
 private[test] class QueueInlineWrapperTop extends Module {
   val io = IO(new Bundle {
@@ -51,9 +51,9 @@ private[test] class QueueSvDependencyTop extends Module {
   private val fast = Module(new xs.utils.verilog.SvFastQueueDNImpl(8, 5))
   private val mimo = Module(new xs.utils.verilog.SvMimoQueueImpl(8, 2, 3, 5, false))
   fast.clock := clock
-  fast.reset := reset
+  fast.reset := reset.asAsyncReset
   mimo.clock := clock
-  mimo.reset := reset
+  mimo.reset := reset.asAsyncReset
   io.fast <> fast.io
   io.mimo <> mimo.io
 }
@@ -108,6 +108,25 @@ class QueueInlineSpec extends SimTestSpec {
       val mimo = rtl.substring(rtl.indexOf("module SvMimoQueue #(")).split("endmodule")(0)
       assert(hasInstanceOf(mimo, "SvPopcount"), "SvMimoQueue must instantiate its SV population-count dependency")
       assert(mimo.contains("u_enq_fire_count") && mimo.contains("u_deq_fire_count"))
+    }
+
+    it("uses independent population counts for sparse enqueue ranks") {
+      val registry = new VlogRegistry
+      val sources = registry.sources(SvMimoQueueImpl)
+      val mimo = sources.find(_.moduleName == registry.nameOf(SvMimoQueueImpl)).get.text
+      val sparse = mimo.substring(mimo.indexOf("begin : sparse_rank"), mimo.indexOf("endgenerate"))
+      assert(hasInstanceOf(sparse, registry.nameOf(SvPopcountImpl)))
+      val compactSparse = sparse.replaceAll("\\s+", "")
+      assert(compactSparse.contains("for(genvare=1;e<ENQ_NUM;e++)begin:gen_rank_count"))
+      assert(compactSparse.contains("#(.INPUT_SIZE(e))u_rank_count"))
+      assert(compactSparse.contains(".io_in(io_enq_valid[e-1:0])"))
+      assert(compactSparse.contains(".io_out(enq_rank[e][$clog2(e+1)-1:0])"))
+      assert(compactSparse.contains("assignenq_rank[e][ADDR_WIDTH:$clog2(e+1)]='0;"))
+      assert(!compactSparse.contains("enq_rank_mask"))
+      assert(!compactSparse.contains("enq_rank[e-1]"), "sparse enqueue ranks must not form a serial adder chain")
+      val shared = mimo.substring(0, mimo.indexOf("generate")).replaceAll("\\s+", "")
+      assert(shared.contains("assignenq_rank[0]='0;"),
+        "lane zero must have an explicit zero rank in both compact and sparse modes")
     }
 
     it("deduplicates helpers shared by direct ExtModules and SV-only dependencies") {

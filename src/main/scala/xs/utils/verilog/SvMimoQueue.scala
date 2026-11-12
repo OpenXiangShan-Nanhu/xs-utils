@@ -113,7 +113,7 @@ object SvMimoQueueImpl extends VlogModule {
        |  wire [COUNT_WIDTH - 1:0] next_count = count + COUNT_WIDTH'(enq_fire_count) - COUNT_WIDTH'(deq_fire_count);
        |  wire [ADDR_WIDTH - 1:0] tail = add_mod_depth(head, (ADDR_WIDTH + 1)'(count));
        |  wire [ADDR_WIDTH - 1:0] next_head = add_mod_depth(head, (ADDR_WIDTH + 1)'(deq_fire_count));
-       |  logic [ADDR_WIDTH:0] enq_rank [ENQ_NUM];
+       |  wire [ADDR_WIDTH:0] enq_rank [ENQ_NUM];
        |  logic [ADDR_WIDTH - 1:0] enq_addr [ENQ_NUM];
        |  logic [ENQ_NUM - 1:0] write_match [DEPTH];
        |  wire [DATA_WIDTH - 1:0] write_data [DEPTH];
@@ -122,6 +122,7 @@ object SvMimoQueueImpl extends VlogModule {
        |  wire [DATA_WIDTH - 1:0] forward_data [DEQ_NUM];
        |
        |  assign io_count = count;
+       |  assign enq_rank[0] = '0;
        |
        |  ${ctx.ref(SvPopcountImpl)} #(.INPUT_SIZE(ENQ_NUM)) u_enq_fire_count (
        |    .io_in(enq_fire), .io_out(enq_fire_count)
@@ -133,20 +134,18 @@ object SvMimoQueueImpl extends VlogModule {
        |  generate
        |    if (ENQ_COMPACT != 0) begin : compact_rank
        |      // Chisel equivalent: enq_rank := VecInit((0 until ENQ_NUM).map(_.U((ADDR_WIDTH + 1).W)))
-       |      // Valid lanes must form a low-lane prefix in compact mode.
-       |      always_comb begin
-       |        for (integer e = 0; e < ENQ_NUM; e++) begin
-       |          enq_rank[e] = (ADDR_WIDTH + 1)'(e);
-       |        end
+       |      for (genvar e = 1; e < ENQ_NUM; e++) begin : gen_rank_count
+       |        assign enq_rank[e] = (ADDR_WIDTH + 1)'(e);
        |      end
        |    end else begin : sparse_rank
-       |      // Chisel equivalent: enq_rank := VecInit(io_enq_valid.asBools
-       |      //   .scanLeft(0.U((ADDR_WIDTH + 1).W))((n, v) => n + v.asUInt).dropRight(1))
-       |      always_comb begin
-       |        enq_rank[0] = '0;
-       |        for (integer e = 1; e < ENQ_NUM; e++) begin
-       |          enq_rank[e] = enq_rank[e - 1] + (ADDR_WIDTH + 1)'(io_enq_valid[e - 1]);
-       |        end
+       |      // Chisel equivalent: enq_rank := VecInit((0 until ENQ_NUM).map(e =>
+       |      //   PopCount(io_enq_valid.asBools.take(e)).pad(ADDR_WIDTH + 1)))
+       |      for (genvar e = 1; e < ENQ_NUM; e++) begin : gen_rank_count
+       |        assign enq_rank[e][ADDR_WIDTH:$$clog2(e + 1)] = '0;
+       |        ${ctx.ref(SvPopcountImpl)} #(.INPUT_SIZE(e)) u_rank_count (
+       |          .io_in(io_enq_valid[e - 1:0]),
+       |          .io_out(enq_rank[e][$$clog2(e + 1) - 1:0])
+       |        );
        |      end
        |    end
        |  endgenerate
@@ -288,7 +287,7 @@ class SvMimoQueue[T <: Data]
   io.count := q.io.count
 
   q.clock := clock
-  q.reset := reset
+  q.reset := reset.asAsyncReset
 
   private val enqValidNum = PopCount(io.enq.map(_.valid))
   if (enqIsCompact) {

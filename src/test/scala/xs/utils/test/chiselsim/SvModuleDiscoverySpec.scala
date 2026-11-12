@@ -113,7 +113,7 @@ class SvModuleDiscoverySpec extends AnyFunSpec {
           assert(names.contains("ScanConsumer7"))
           assert(names.contains("SvPrefixReduceOR"))
           assert(names.contains("SvPrefixReduceXOR"))
-          assert(!names.contains("SvPrefixReduceAND"))
+          assert(names.contains("SvPrefixReduceAND"))
           assert(names.distinct == names)
           assert(probe(loader, "defaultCalls") == 1)
         } finally thread.setContextClassLoader(previous)
@@ -202,9 +202,9 @@ class SvModuleDiscoverySpec extends AnyFunSpec {
       val previous = thread.getContextClassLoader
       try {
         thread.setContextClassLoader(null)
-        val defaults = SvModuleMain.discover().filter(_.moduleName.startsWith("SvPrefixReduce"))
-        assert(defaults.map(_.moduleName) == Seq("SvPrefixReduceOR"))
-        assert(new VlogRegistry().sources(defaults).size == 1)
+        val variants = SvModuleMain.discover().filter(_.moduleName.startsWith("SvPrefixReduce"))
+        assert(variants.map(_.moduleName) == Seq("SvPrefixReduceAND", "SvPrefixReduceOR", "SvPrefixReduceXOR"))
+        assert(new VlogRegistry().sources(variants).map(_.moduleName) == variants.map(_.moduleName))
       } finally thread.setContextClassLoader(previous)
     }
   }

@@ -143,7 +143,9 @@ class MimoQueueSpec extends SimTestSpec {
     MimoQueueCase(depth = 3, enqNum = 3, deqNum = 2, enqIsCompact = false, width = 8),
     MimoQueueCase(depth = 3, enqNum = 2, deqNum = 3, enqIsCompact = true, width = 8),
     MimoQueueCase(depth = 5, enqNum = 3, deqNum = 2, enqIsCompact = false, width = 8),
-    MimoQueueCase(depth = 5, enqNum = 2, deqNum = 3, enqIsCompact = true, width = 8)
+    MimoQueueCase(depth = 5, enqNum = 2, deqNum = 3, enqIsCompact = true, width = 8),
+    MimoQueueCase(depth = 7, enqNum = 5, deqNum = 3, enqIsCompact = false, width = 8),
+    MimoQueueCase(depth = 8, enqNum = 8, deqNum = 4, enqIsCompact = false, width = 8)
   )
 
   private val randomCases = Seq(
@@ -158,7 +160,9 @@ class MimoQueueSpec extends SimTestSpec {
     MimoQueueCase(5, 2, 3, enqIsCompact = false, 7),
     MimoQueueCase(6, 4, 3, enqIsCompact = true, 7),
     MimoQueueCase(6, 3, 4, enqIsCompact = false, 7),
-    MimoQueueCase(7, 2, 5, enqIsCompact = true, 7)
+    MimoQueueCase(7, 2, 5, enqIsCompact = true, 7),
+    MimoQueueCase(7, 5, 3, enqIsCompact = false, 7),
+    MimoQueueCase(8, 8, 4, enqIsCompact = false, 7)
   )
 
   private val typedCases = for {
