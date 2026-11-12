@@ -16,6 +16,9 @@ class SvDefaultsSpec extends AnyFunSpec {
           Module(new SvPriorityMuxImpl()) -> SvPriorityMuxImpl,
           Module(new SvPriorityEncoderImpl()) -> SvPriorityEncoderImpl,
           Module(new SvPriorityEncoder1HImpl()) -> SvPriorityEncoder1HImpl,
+          Module(new SvPrefixReduceImpl()()) -> SvPrefixReduceImpl(),
+          Module(new SvPrefixReduceImpl(op = SvPrefixReduce.And)()) -> SvPrefixReduceImpl(SvPrefixReduce.And),
+          Module(new SvPrefixReduceImpl(op = SvPrefixReduce.Xor)()) -> SvPrefixReduceImpl(SvPrefixReduce.Xor),
           Module(new SvOHToUIntImpl()) -> SvOHToUIntImpl,
           Module(new SvOHToMaskImpl()) -> SvOHToMaskImpl,
           Module(new SvMaskToOHImpl()) -> SvMaskToOHImpl,
@@ -64,6 +67,8 @@ class SvDefaultsSpec extends AnyFunSpec {
         val secdedDecoder = Module(new SvSecdedDecoder())
         assert(secdedEncoder.eccBits == 8 && secdedEncoder.io.in.getWidth == 64 && secdedEncoder.io.out.data.getWidth == 64 && secdedEncoder.io.out.ecc.getWidth == 8)
         assert(secdedDecoder.eccBits == 8 && secdedDecoder.io.in.data.getWidth == 64 && secdedDecoder.io.in.ecc.getWidth == 8 && secdedDecoder.io.out.getWidth == 64)
+        val prefixReduce = Module(new SvPrefixReduce())
+        assert(prefixReduce.io.in.getWidth == 32 && prefixReduce.io.out.getWidth == 32)
         val popcount = Module(new SvPopcount())
         assert(popcount.io.in.getWidth == 2 && popcount.io.out.getWidth == 2)
         val decoder = Module(new SvUIntToOH())

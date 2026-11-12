@@ -28,32 +28,30 @@ object SvPriorityEncoder1HImpl extends VlogModule {
        |  parameter integer LOW_FIRST = 1
        |) (
        |  input  wire  [INPUT_SIZE - 1:0] io_in,
-       |  output wire  [INPUT_SIZE - 1:0] io_out
+       |  output logic [INPUT_SIZE - 1:0] io_out
        |);
-       |  logic [INPUT_SIZE - 1:0] result [INPUT_SIZE + 1];
+       |  wire [INPUT_SIZE - 1:0] prefix;
+       |  ${ctx.ref(SvPrefixReduceImpl(0))} #(.INPUT_SIZE(INPUT_SIZE), .HIGH_PREFIX(int'(LOW_FIRST == 0))) u_prefix (
+       |    .io_in(io_in), .io_out(prefix)
+       |  );
        |
-       |  // Chisel equivalent: val order = if (LOW_FIRST != 0) 0 until INPUT_SIZE else (0 until INPUT_SIZE).reverse
-       |  //   io_out := order.reverse.foldLeft(0.U(INPUT_SIZE.W))((r, i) => Mux(io_in(i), (BigInt(1) << i).U(INPUT_SIZE.W), r))
-       |  // No hit returns zero; use INPUT_SIZE-bit constants to preserve selections above bit 31.
+       |  // Chisel equivalent: io_out(i) := io_in(i) && !OR(all higher-priority input bits).
+       |  // The inclusive prefix at the adjacent bit excludes the current request.
        |  generate
        |    if (LOW_FIRST != 0) begin : gen_low_first
-       |      // Compute result[i + 1] first, then let the lower index win.
        |      always_comb begin
-       |        result[INPUT_SIZE] = '0;
-       |        for (integer i = INPUT_SIZE - 1; i >= 0; i = i - 1) begin : gen_priority
-       |          result[i] = io_in[i] ? (INPUT_SIZE'(1) << i) : result[i + 1];
+       |        io_out[0] = io_in[0];
+       |        for (integer i = 1; i < INPUT_SIZE; i = i + 1) begin : gen_priority
+       |          io_out[i] = io_in[i] & ~prefix[i - 1];
        |        end
        |      end
-       |      assign io_out = result[0];
        |    end else begin : gen_high_first
-       |      // Scan low to high and let later hits replace earlier ones.
        |      always_comb begin
-       |        result[0] = '0;
-       |        for (integer i = 0; i < INPUT_SIZE; i = i + 1) begin : gen_priority
-       |          result[i + 1] = io_in[i] ? (INPUT_SIZE'(1) << i) : result[i];
+       |        io_out[INPUT_SIZE - 1] = io_in[INPUT_SIZE - 1];
+       |        for (integer i = 0; i < INPUT_SIZE - 1; i = i + 1) begin : gen_priority
+       |          io_out[i] = io_in[i] & ~prefix[i + 1];
        |        end
        |      end
-       |      assign io_out = result[INPUT_SIZE];
        |    end
        |  endgenerate
        |endmodule

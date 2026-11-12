@@ -427,7 +427,7 @@ class SvRRArbiterSpec extends SimTestSpec {
       for (prefix <- Seq("", "soc_", "chip_")) withPrefix(prefix) {
         val registry = new VlogRegistry
         val sources = registry.sources(SvLivelockFreeArbiterImpl)
-        val expected = Seq("SvOHToMask", "SvPriorityEncoder1H", "SvMux1H", "SvOHToUInt", "SvLivelockFreeArbiter").map(prefix + _)
+        val expected = Seq("SvOHToMask", "SvPrefixReduceOR", "SvPriorityEncoder1H", "SvMux1H", "SvOHToUInt", "SvLivelockFreeArbiter").map(prefix + _)
         assert(sources.map(_.moduleName) == expected)
         assert(sources.map(_.fileName) == expected.map(_ + ".sv"))
         assert(registry.sources(SvLivelockFreeArbiterImpl) == sources, "closure must be deterministic")
@@ -450,7 +450,7 @@ class SvRRArbiterSpec extends SimTestSpec {
         val annotations = ChiselStage.elaborate(new SvRRArbiterMuxDependencyTop(muxFirst)).annotations.collect {
           case annotation: BlackBoxInlineAnno => annotation
         }.toSeq
-        val expectedFiles = Seq("SvOHToMask", "SvPriorityEncoder1H", "SvMux1H", "SvOHToUInt", "SvLivelockFreeArbiter")
+        val expectedFiles = Seq("SvOHToMask", "SvPrefixReduceOR", "SvPriorityEncoder1H", "SvMux1H", "SvOHToUInt", "SvLivelockFreeArbiter")
           .map(name => s"$prefix$name.sv").sorted
         assert(annotations.map(_.name).sorted == expectedFiles,
           s"muxFirst=$muxFirst prefix=$prefix must register each source only once")
@@ -458,8 +458,8 @@ class SvRRArbiterSpec extends SimTestSpec {
         val rtl = ChiselStage.emitSystemVerilog(new SvRRArbiterMuxDependencyTop(muxFirst))
         val moduleNames = raw"(?m)^\s*module\s+(\w+)".r.findAllMatchIn(rtl).map(_.group(1)).toSeq
         assert(moduleNames.sorted == Seq("SvRRArbiterMuxDependencyTop", s"${prefix}SvLivelockFreeArbiter",
-          s"${prefix}SvMux1H", s"${prefix}SvPriorityEncoder1H", s"${prefix}SvOHToUInt", s"${prefix}SvOHToMask").sorted,
-          "only the top and five shared SV definitions should survive")
+          s"${prefix}SvMux1H", s"${prefix}SvPrefixReduceOR", s"${prefix}SvPriorityEncoder1H", s"${prefix}SvOHToUInt", s"${prefix}SvOHToMask").sorted,
+          "only the top and six shared SV definitions should survive")
         val top = moduleBody(rtl, "SvRRArbiterMuxDependencyTop")
         val arbiter = moduleBody(rtl, s"${prefix}SvLivelockFreeArbiter")
         val muxInstance = (raw"(?m)^\s*" + prefix + raw"SvMux1H\s*#\(").r
