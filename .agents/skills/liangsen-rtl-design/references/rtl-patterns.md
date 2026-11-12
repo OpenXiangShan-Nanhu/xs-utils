@@ -100,7 +100,7 @@ endmodule
 - 树形实现将输入叶子和内部节点的索引域分开，按依赖顺序赋值一次；非二次幂时只对缺失叶子补中性元素。
 - 空输入是接口契约问题：若允许 N=0，要单独用 generate if 定义结果与合法声明；不能依赖负范围或越界访问的工具行为。
 
-## 矩阵计算与批量模块例化分离
+## 普通矩阵计算与批量模块例化默认分离
 
 ```systemverilog
 logic [INPUTS - 1:0] match [OUTPUTS];
@@ -127,4 +127,33 @@ generate
 endgenerate
 ```
 
-`data_selector` 代表既有辅助模块；是否一热、优先级或多命中合并由接口规定，不能在重构时自行改变。注释中的 `DataSelector` 仅代表工程对应的 Chisel helper，此处只示意批量例化结构，不声明选择算法等价。矩阵和结果向量声明在外部，例化循环仅接线。
+`data_selector` 代表既有辅助模块；是否一热、优先级或多命中合并由接口规定，不能在重构时自行改变。注释中的 `DataSelector` 仅代表工程对应的 Chisel helper，此处只示意批量例化结构，不声明选择算法等价。普通矩阵映射默认在过程式循环计算，矩阵和结果向量在外部声明；这不是禁止例化循环包含相关的常量切片或补零赋值。
+
+
+## genvar 相关切片与局部连线
+
+当每个 lane 的切片边界、宽度或参数依赖循环索引时，`generate for` 可让常量表达式和相关连线保持在一起；简单独立的逐 lane 赋值若这样更清楚，也允许使用。不要为了避免 generate 内赋值，把自然的切片改成逐 bit 过程式循环。
+
+```systemverilog
+// ENQ_NUM >= 1, DEPTH >= ENQ_NUM; io_enq_valid has ENQ_NUM bits.
+localparam integer ADDR_WIDTH = (DEPTH == 1) ? 1 : $clog2(DEPTH);
+wire [ADDR_WIDTH:0] enq_rank [ENQ_NUM];
+
+// Chisel equivalent: enq_rank := VecInit((0 until ENQ_NUM).map(e =>
+//   PopCount(io_enq_valid.asBools.take(e)).pad(ADDR_WIDTH + 1)))
+assign enq_rank[0] = '0;
+generate
+  for (genvar e = 1; e < ENQ_NUM; e++) begin : gen_rank_count
+    localparam integer PREFIX_WIDTH = $clog2(e + 1);
+    assign enq_rank[e][ADDR_WIDTH:PREFIX_WIDTH] = '0;
+    SvPopcount #(.INPUT_SIZE(e)) u_rank_count (
+      .io_in(io_enq_valid[e - 1:0]),
+      .io_out(enq_rank[e][PREFIX_WIDTH - 1:0])
+    );
+  end
+endgenerate
+```
+
+- `SvPopcount` 的输出宽度为 `$clog2(INPUT_SIZE + 1)`；`e` 与 `PREFIX_WIDTH` 在展开时均为常量，补零和子模块输出驱动不重叠的 bit。
+- 第 0 路单独置零，避免零宽实例；给定参数约束保证上方切片合法。其他场景若可能出现空切片，用逐 lane 的 generate if 处理，不依赖非法或反向范围。
+- 这类 generate 用法不豁免单驱动、每 bit 单次赋值、组合赋值完整性或数组式归约规则，也不保证自动形成平衡树。
