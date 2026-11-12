@@ -1,48 +1,13 @@
 package xs.utils.test.chiselsim
 
 import chisel3._
-import chisel3.util.{ArbiterIO, Cat, Decoupled, DecoupledIO, Mux1H, OHToUInt, RegEnable, Valid, MixedVec, log2Ceil}
+import chisel3.util.{ArbiterIO, Decoupled, DecoupledIO, Valid, MixedVec, log2Ceil}
 import circt.stage.ChiselStage
 import xs.utils.GlobalData
 import xs.utils.test.WrapperTestPayload
 import xs.utils.verilog._
 
 import scala.util.Random
-
-// Frozen pre-SV FastArbiter implementation for cycle-by-cycle equivalence tests.
-private[test] class LegacyFastArbiter[T <: Data](gen: T, n: Int) extends Module {
-  val io = IO(new ArbiterIO(gen, n))
-  private def maskToOH(seq: Seq[Bool]): Seq[Bool] = seq.zipWithIndex.map {
-    case (b, 0) => b
-    case (b, i) => b && !Cat(seq.take(i)).orR
-  }
-
-  val chosenOH = Wire(UInt(n.W))
-  val valids = VecInit(io.in.map(_.valid)).asUInt
-  // Requests not selected at the last successful transfer.
-  val pendingMask = RegEnable(
-    valids & (~chosenOH).asUInt,
-    0.U(n.W),
-    io.out.fire
-  )
-  // Keep only indices strictly higher than the last chosen lane.
-  val rrGrantMask = RegEnable(VecInit((0 until n) map { i =>
-    if (i == 0) false.B else chosenOH(i - 1, 0).orR
-  }).asUInt, 0.U(n.W), io.out.fire)
-  val rrSelOH = VecInit(maskToOH((rrGrantMask & pendingMask).asBools)).asUInt
-  val firstOneOH = VecInit(maskToOH(valids.asBools)).asUInt
-  val rrValid = (rrSelOH & valids).orR
-  chosenOH := Mux(rrValid, rrSelOH, firstOneOH)
-
-  io.out.valid := valids.orR
-  io.out.bits := Mux1H(chosenOH, io.in.map(_.bits))
-
-  io.in.map(_.ready).zip(chosenOH.asBools).foreach {
-    case (rdy, grant) => rdy := grant && io.out.ready
-  }
-
-  io.chosen := OHToUInt(chosenOH)
-}
 
 private[test] case class FastCase(size: Int, width: Int = 17, shape: String = "bundle", api: String = "fast")
 
@@ -60,9 +25,6 @@ private[test] class FastBank(cases: Seq[FastCase]) extends Module {
     val gen = chiselTypeOf(port.in.head.bits)
     val arb = c.api match {
       case "fastFactory" => SvFastArbiter(gen, c.size)
-      case "alias" => Module(new xs.utils.FastArbiter(gen, c.size)).io
-      case "aliasFactory" => xs.utils.FastArbiter(gen, c.size)
-      case "reference" => Module(new LegacyFastArbiter(gen, c.size)).io
       case "core" =>
         val arb = Wire(new ArbiterIO(gen, c.size))
         val core = Module(new SvFastArbiterImpl(c.width, c.size))
@@ -95,25 +57,21 @@ private[test] class FastMixedBank(fastFirst: Boolean) extends Module {
   io.zip(arbiters).foreach { case (port, arb) => port <> arb }
 }
 
-private[test] class FastArbiterFactories(size: Int) extends Module {
+private[test] class SvFastArbiterFactories(size: Int) extends Module {
   override def resetType: Module.ResetType.Type = Module.ResetType.Asynchronous
   val io = IO(new Bundle {
     val in = Input(Vec(size, Valid(WrapperTestPayload(66, "vecBundle"))))
-    val out = Vec(8, Decoupled(WrapperTestPayload(66, "vecBundle")))
-    val ready = Output(Vec(8, UInt(size.W)))
+    val out = Vec(4, Decoupled(WrapperTestPayload(66, "vecBundle")))
+    val ready = Output(Vec(4, UInt(size.W)))
   })
-  for (api <- 0 until 8) {
+  for (api <- 0 until 4) {
     val inputs = Wire(Vec(size, Decoupled(chiselTypeOf(io.in.head.bits))))
     inputs.zip(io.in).foreach { case (sink, in) => sink.valid := in.valid; sink.bits := in.bits }
     api match {
       case 0 => io.out(api) <> SvFastArbiter(inputs.toSeq)
       case 1 => io.out(api) <> SvFastArbiter(inputs)
-      case 2 => io.out(api) <> xs.utils.FastArbiter(inputs.toSeq)
-      case 3 => io.out(api) <> xs.utils.FastArbiter(inputs)
-      case 4 => SvFastArbiter(inputs.toSeq, io.out(api))
-      case 5 => SvFastArbiter(inputs.toSeq, io.out(api), name = Some("fast"))
-      case 6 => xs.utils.FastArbiter(inputs.toSeq, io.out(api))
-      case 7 => xs.utils.FastArbiter(inputs.toSeq, io.out(api), name = Some("legacy"))
+      case 2 => SvFastArbiter(inputs.toSeq, io.out(api))
+      case 3 => SvFastArbiter(inputs.toSeq, io.out(api), name = Some("fast"))
     }
     io.ready(api) := VecInit(inputs.map(_.ready)).asUInt
   }
@@ -161,8 +119,8 @@ class SvFastArbiterSpec extends SimTestSpec {
   }
 
   describe("SvFastArbiter") {
-    it("bypasses the SV core for one input across wrappers, factories and aliases") {
-      val cases = Seq("fast", "fastFactory", "alias", "aliasFactory")
+    it("bypasses the SV core for one input across wrappers and factories") {
+      val cases = Seq("fast", "fastFactory")
         .map(api => FastCase(1, 66, "vecBundle", api))
       val rtl = ChiselStage.emitSystemVerilog(new FastBank(cases))
       assert(!rtl.contains("module SvFastArbiter #("))
@@ -179,32 +137,27 @@ class SvFastArbiterSpec extends SimTestSpec {
       ChiselStage.emitCHIRRTL(new Module {
         val in = IO(Flipped(Decoupled(UInt(13.W))))
         assert(SvFastArbiter(Seq(in)) eq in)
-        assert(xs.utils.FastArbiter(Seq(in)) eq in)
       })
     }
 
-    it("infers singleton payload widths and preserves the FastArbiter type and companion aliases") {
-      assert(xs.utils.FastArbiter eq SvFastArbiter)
+    it("infers singleton SV payload widths and preserves output/name overloads") {
       ChiselStage.emitCHIRRTL(new Module {
         override def resetType: Module.ResetType.Type = Module.ResetType.Asynchronous
-        val alias: xs.utils.FastArbiter[UInt] = Module(new xs.utils.FastArbiter(UInt(), 1))
-        val wrappers = Seq(alias, Module(new SvFastArbiter(UInt(), 1)))
-        wrappers.foreach { arb =>
-          arb.io.in.head.valid := true.B
-          arb.io.in.head.bits := 7.U(13.W)
-          arb.io.out.ready := true.B
-        }
+        val wrapper = Module(new SvFastArbiter(UInt(), 1))
+        wrapper.io.in.head.valid := true.B
+        wrapper.io.in.head.bits := 7.U(13.W)
+        wrapper.io.out.ready := true.B
         val factory = SvFastArbiter(UInt(), n = 1)
         factory.in.head.valid := true.B
         factory.in.head.bits := 7.U(13.W)
         factory.out.ready := true.B
       })
-      val chirrtl = ChiselStage.emitCHIRRTL(new FastArbiterFactories(3))
-      assert(chirrtl.contains("inst legacy_arb of"))
+      val chirrtl = ChiselStage.emitCHIRRTL(new SvFastArbiterFactories(3))
+      assert(chirrtl.contains("inst fast_arb of"))
     }
 
     it("selects immediately, holds history on stalls, falls back on withdrawal and resets asynchronously") {
-      val cases = Seq("fast", "core", "alias").map(api => FastCase(5, 66, "vecBundle", api))
+      val cases = Seq("fast", "core", "fastFactory").map(api => FastCase(5, 66, "vecBundle", api))
       simulate(new FastBank(cases)) { dut =>
         val bits = Seq.tabulate(5)(i => (BigInt(i + 1) << 60) | (i + 17))
         def cycle(mask: Int, ready: Boolean, selected: Option[Int]): Unit = {
@@ -255,32 +208,28 @@ class SvFastArbiterSpec extends SimTestSpec {
       }
     }
 
-    it("matches the removed Chisel FastArbiter cycle by cycle with changing requests and backpressure") {
-      val configs = Seq(
-        FastCase(2, 1, api = "fast"), FastCase(3, api = "alias"),
+    it("matches an independent model with changing requests and backpressure") {
+      val cases = Seq(
+        FastCase(2, 1, api = "fast"), FastCase(3, api = "fastFactory"),
         FastCase(5, 66, "vecBundle", "fastFactory"),
-        FastCase(8, 129, "vecBundle", "aliasFactory"),
+        FastCase(8, 129, "vecBundle", "fast"),
         FastCase(17, api = "fastFactory"), FastCase(32, api = "fast"),
-        FastCase(33, api = "alias"), FastCase(65, api = "fast"))
-      val cases = configs.flatMap(c => Seq(c, c.copy(api = "reference")))
-      val models = configs.map(c => new Model(c.size))
+        FastCase(33, api = "fastFactory"), FastCase(65, api = "fast"))
+      val models = cases.map(c => new Model(c.size))
       val random = new Random(testSeed())
       simulate(new FastBank(cases)) { dut =>
         for (cycle <- 0 until testCycles(1500)) {
           val reset = cycle == 0 || random.nextInt(89) == 0
           dut.reset.poke(reset.B)
-          for (((c, model), index) <- configs.zip(models).zipWithIndex) {
+          for (((c, model), port) <- cases.zip(models).zip(dut.io)) {
             if (reset) model.reset()
             val valid = if (cycle % 31 == 0) BigInt(0)
               else if (cycle % 7 == 0) (BigInt(1) << c.size) - 1 else BigInt(c.size, random)
             val ready = random.nextBoolean()
             val bits = Seq.fill(c.size)(BigInt(c.width, random))
             val selected = model.choose(valid)
-            for (offset <- 0 until 2) {
-              val port = dut.io(2 * index + offset)
-              drive(port, valid, ready, bits)
-              check(port, selected, ready, bits, s"$c cycle=$cycle reference=${offset == 1}")
-            }
+            drive(port, valid, ready, bits)
+            check(port, selected, ready, bits, s"$c cycle=$cycle")
             if (!reset) model.transfer(valid, selected, ready)
           }
           dut.clock.step()
@@ -309,10 +258,10 @@ class SvFastArbiterSpec extends SimTestSpec {
       }
     }
 
-    it("forwards FAST through every sequence factory and preserves legacy output/name overloads") {
+    it("forwards FAST through every SV sequence factory and output/name overload") {
       val random = new Random(testSeed())
       val model = new Model(5)
-      simulate(new FastArbiterFactories(5)) { dut =>
+      simulate(new SvFastArbiterFactories(5)) { dut =>
         for (cycle <- 0 until testCycles(300)) {
           val reset = cycle == 0 || cycle % 67 == 0
           dut.reset.poke(reset.B)
@@ -364,9 +313,9 @@ class SvFastArbiterSpec extends SimTestSpec {
       }
     }
 
-    it("rejects empty, non-hardware and invalid-width FastArbiter inputs") {
+    it("rejects empty, non-hardware and invalid-width SvFastArbiter inputs") {
       for (n <- Seq(0, -1)) intercept[IllegalArgumentException] {
-        ChiselStage.emitCHIRRTL(new Module { val bad = Module(new xs.utils.FastArbiter(UInt(8.W), n)) })
+        ChiselStage.emitCHIRRTL(new Module { val bad = Module(new SvFastArbiter(UInt(8.W), n)) })
       }
       for (gen <- Seq(UInt(), UInt(0.W))) intercept[IllegalArgumentException] {
         ChiselStage.emitCHIRRTL(new Module { val bad = Module(new SvFastArbiter(gen, 2)) })

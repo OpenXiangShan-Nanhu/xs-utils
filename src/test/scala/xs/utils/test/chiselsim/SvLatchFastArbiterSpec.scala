@@ -9,7 +9,7 @@ import xs.utils.verilog._
 
 import scala.util.Random
 
-private[test] case class LatchFastCase(n: Int, width: Int = 17, shape: String = "bundle", factory: Boolean = false, compatibility: Boolean = false)
+private[test] case class LatchFastCase(n: Int, width: Int = 17, shape: String = "bundle", factory: Boolean = false)
 
 private[test] class LatchFastPort(c: LatchFastCase) extends Bundle {
   val in = Input(Vec(c.n, Valid(WrapperTestPayload(c.width, c.shape))))
@@ -23,8 +23,7 @@ private[test] class LatchFastBank(cases: Seq[LatchFastCase]) extends Module {
   val io = IO(MixedVec(cases.map(new LatchFastPort(_))))
   cases.zip(io).foreach { case (c, port) =>
     val gen = chiselTypeOf(port.in.head.bits)
-    val actual = if (c.compatibility) Module(new xs.utils.LatchFastArbiter(gen, c.n)).io
-      else if (c.factory) SvLatchFastArbiter(gen, c.n) else Module(new SvLatchFastArbiter(gen, c.n)).io
+    val actual = if (c.factory) SvLatchFastArbiter(gen, c.n) else Module(new SvLatchFastArbiter(gen, c.n)).io
     actual.in.zip(port.in).foreach { case (sink, source) =>
       sink.valid := source.valid
       sink.bits := source.bits
@@ -147,10 +146,10 @@ class SvLatchFastArbiterSpec extends SimTestSpec {
       }
     }
 
-    it("matches an independent model cycle by cycle across widths, lanes and compatibility APIs") {
+    it("matches an independent model cycle by cycle across widths, lanes, wrappers and factories") {
       val cases = Seq(LatchFastCase(1, 1), LatchFastCase(2, factory = true), LatchFastCase(3),
         LatchFastCase(5, 66, "vecBundle", factory = true), LatchFastCase(8, 129, "vecBundle"),
-        LatchFastCase(33, factory = true), LatchFastCase(65, compatibility = true))
+        LatchFastCase(33, factory = true), LatchFastCase(65))
       val models = cases.map(c => new Model(c.n))
       val random = new Random(testSeed(0x1a7cL))
       simulate(new LatchFastBank(cases)) { dut =>
