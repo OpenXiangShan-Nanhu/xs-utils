@@ -6,11 +6,10 @@ import chisel3.util.{ArbiterIO, Decoupled, DecoupledIO, log2Ceil}
 
 /** Shared VIP / round-robin core with an asynchronous active-high reset. */
 class SvLivelockFreeArbiterImpl(
-  dataWidth: Int = 32, n: Int = 2, roundRobin: Boolean = false, selLatch: Boolean = false
+  dataWidth: Int = 32, n: Int = 2, roundRobin: Boolean = false
 ) extends VlogExtModule(Map(
   "DATA_WIDTH" -> dataWidth, "INPUT_SIZE" -> n,
-  "ROUND_ROBIN" -> (if (roundRobin) 1 else 0),
-  "SEL_LATCH" -> (if (selLatch) 1 else 0)
+  "ROUND_ROBIN" -> (if (roundRobin) 1 else 0)
 )) {
   require(dataWidth > 0, "SvLivelockFreeArbiter DATA_WIDTH must be positive")
   require(n > 0, "SvLivelockFreeArbiter INPUT_SIZE must be positive")
@@ -63,8 +62,7 @@ object SvLivelockFreeArbiterImpl extends VlogModule {
        |module ${ctx.selfName} #(
        |  parameter integer DATA_WIDTH = 32,
        |  parameter integer INPUT_SIZE = 2,
-       |  parameter integer ROUND_ROBIN = 0,
-       |  parameter integer SEL_LATCH = 0
+       |  parameter integer ROUND_ROBIN = 0
        |) (
        |  input  wire                                                       clock,
        |  input  wire                                                       reset,
@@ -76,82 +74,77 @@ object SvLivelockFreeArbiterImpl extends VlogModule {
        |  input  wire                                                       io_out_ready,
        |  output wire  [((INPUT_SIZE > 1) ? $$clog2(INPUT_SIZE) : 1) - 1:0] io_chosen
        |);
-       |  // VIP mode stores the preferred lane; RR mode stores the last fired lane.
+       |  // All state uses the shared asynchronous active-high reset.
        |  logic [INPUT_SIZE - 1:0] pointer;
-       |  logic [INPUT_SIZE - 1:0] selection;
        |  wire [INPUT_SIZE - 1:0] selected;
        |  wire fire = io_out_valid && io_out_ready;
-       |
-       |  // Refill a registered selection using the priority after this transfer.
-       |  wire select_after_fire;
-       |  wire [INPUT_SIZE - 1:0] search_pointer = select_after_fire ? selected : pointer;
        |  wire [INPUT_SIZE - 1:0] higher_mask;
-       |  ${ctx.ref(SvOHToMaskImpl)} #(.INPUT_SIZE(INPUT_SIZE), .HIGH_MASK(1)) u_higher_mask (
-       |    .io_in(search_pointer), .io_out(higher_mask)
-       |  );
-       |
-       |  wire [INPUT_SIZE - 1:0] higher_valid = io_in_valid & higher_mask;
+       |  wire [INPUT_SIZE - 1:0] priority_valid;
        |  wire [INPUT_SIZE - 1:0] first_valid;
-       |  wire [INPUT_SIZE - 1:0] first_higher;
+       |  wire [INPUT_SIZE - 1:0] first_priority;
+       |  wire [INPUT_SIZE - 1:0] circular_choice;
+       |  wire [INPUT_SIZE - 1:0] next_pointer;
+       |  wire advance_pointer;
+       |  wire pointer_valid;
+       |  wire other_valid;
+       |
+       |  ${ctx.ref(SvOHToMaskImpl)} #(.INPUT_SIZE(INPUT_SIZE), .HIGH_MASK(1)) u_higher_mask (
+       |    .io_in(pointer), .io_out(higher_mask)
+       |  );
        |  ${ctx.ref(SvPriorityEncoder1HImpl)} #(.INPUT_SIZE(INPUT_SIZE)) u_first_valid (
        |    .io_in(io_in_valid), .io_out(first_valid)
        |  );
-       |  ${ctx.ref(SvPriorityEncoder1HImpl)} #(.INPUT_SIZE(INPUT_SIZE)) u_first_higher (
-       |    .io_in(higher_valid), .io_out(first_higher)
+       |  ${ctx.ref(SvPriorityEncoder1HImpl)} #(.INPUT_SIZE(INPUT_SIZE)) u_first_priority (
+       |    .io_in(priority_valid), .io_out(first_priority)
        |  );
-       |  // Search above the pointer, then wrap to the lowest valid lane.
-       |  // A lone requester may win again; next-cycle valid prevents stale transfers.
-       |  wire [INPUT_SIZE - 1:0] circular_choice = (|higher_valid) ? first_higher : first_valid;
        |
-       |  // The policies share the search and differ only in grant / pointer updates.
-       |  wire [INPUT_SIZE - 1:0] candidate;
-       |  wire [INPUT_SIZE - 1:0] next_pointer;
-       |  wire advance_pointer;
-       |  wire pointer_valid = |(io_in_valid & search_pointer);
-       |  wire other_valid = |(io_in_valid & ~search_pointer);
-       |  // Chisel equivalent: circular_choice := Mux(higher_valid.orR, first_higher, first_valid)
-       |  //   candidate := (if (ROUND_ROBIN != 0) circular_choice else
-       |  //     Mux(select_after_fire, circular_choice, Mux(pointer_valid, search_pointer, first_valid)))
        |  generate
+       |    // VIP stores the preferred lane; RR stores the last fired lane.
+       |    assign priority_valid = io_in_valid & higher_mask;
+       |    assign pointer_valid = |(io_in_valid & pointer);
+       |    assign other_valid = |(io_in_valid & ~pointer);
+       |    // Chisel equivalent: circular_choice := Mux(priority_valid.orR, first_priority, first_valid)
+       |    assign circular_choice = (|priority_valid) ? first_priority : first_valid;
        |    if (ROUND_ROBIN != 0) begin : gen_round_robin
-       |      assign candidate = circular_choice;
+       |      assign selected = circular_choice;
        |      assign next_pointer = selected;
        |      assign advance_pointer = fire;
        |    end else begin : gen_vip
        |      // Circular search feeds the next-cycle VIP, outside the grant path.
-       |      assign candidate = select_after_fire ? circular_choice : (pointer_valid ? search_pointer : first_valid);
+       |      assign selected = pointer_valid ? pointer : first_valid;
        |      assign next_pointer = circular_choice;
        |      assign advance_pointer = other_valid && (!pointer_valid || fire);
        |    end
-       |  endgenerate
-       |  // Chisel equivalent (clock, asynchronous reset): val pointer = RegInit(1.U(INPUT_SIZE.W))
-       |  //   when(advance_pointer) { pointer := next_pointer }
-       |  always_ff @(posedge clock or posedge reset) begin
-       |    if (reset) pointer <= INPUT_SIZE'(1);
-       |    else if (advance_pointer) pointer <= next_pointer;
-       |  end
-       |
-       |  // Optional selection register: refill on transfer or when no grant is valid.
-       |  generate
-       |    if (SEL_LATCH != 0) begin : gen_sel_latch
-       |      assign select_after_fire = fire;
-       |      // Chisel equivalent (clock, asynchronous reset): val selection = RegInit(0.U(INPUT_SIZE.W))
-       |      //   when(!io_out_valid || io_out_ready) { selection := candidate }; selected := selection & io_in_valid
-       |      always_ff @(posedge clock or posedge reset) begin
-       |        if (reset) selection <= '0;
-       |        else if (!io_out_valid || io_out_ready) selection <= candidate;
-       |      end
-       |      // Only the choice is stored. Gate withdrawn/consumed requests so
-       |      // an obsolete choice cannot cause a phantom transfer.
-       |      assign selected = selection & io_in_valid;
-       |      assign io_out_valid = |selected;
-       |    end else begin : gen_sel_comb
-       |      assign select_after_fire = 1'b0;
-       |      assign selected = candidate;
-       |      assign io_out_valid = |io_in_valid;
+       |    // Chisel equivalent (clock, asynchronous reset): val pointer = RegInit(1.U(INPUT_SIZE.W))
+       |    //   when(advance_pointer) { pointer := next_pointer }
+       |    always_ff @(posedge clock or posedge reset) begin
+       |      if (reset) pointer <= INPUT_SIZE'(1);
+       |      else if (advance_pointer) pointer <= next_pointer;
        |    end
+       |
+       |`ifndef SYNTHESIS
+       |    always @(posedge clock) begin
+       |      if (!reset && !$$onehot(pointer)) begin
+       |        if (`PRINTF_COND_)
+       |          $$fwrite(32'h80000002,
+       |            "Assertion failed at %0t in %m: SvLivelockFreeArbiter pointer must be one-hot (pointer=%b)\\n",
+       |            $$time, pointer);
+       |        if (`ASSERT_VERBOSE_COND_) $$error;
+       |        if (`STOP_COND_) $$fatal;
+       |      end
+       |      if (!reset && advance_pointer && !($$onehot(next_pointer) && (|(next_pointer & io_in_valid)))) begin
+       |        if (`PRINTF_COND_)
+       |          $$fwrite(32'h80000002,
+       |            "Assertion failed at %0t in %m: SvLivelockFreeArbiter next_pointer must select one valid input (next_pointer=%b, valid=%b)\\n",
+       |            $$time, next_pointer, io_in_valid);
+       |        if (`ASSERT_VERBOSE_COND_) $$error;
+       |        if (`STOP_COND_) $$fatal;
+       |      end
+       |    end
+       |`endif
        |  endgenerate
        |
+       |  assign io_out_valid = |io_in_valid;
        |  assign io_in_ready = selected & {INPUT_SIZE{io_out_ready}};
        |  // Chisel equivalent: io_out_bits := (0 until INPUT_SIZE).map(i =>
        |  //   Mux(selected(i), io_in_bits((i + 1) * DATA_WIDTH - 1, i * DATA_WIDTH), 0.U(DATA_WIDTH.W))).reduce(_ | _)
@@ -162,65 +155,45 @@ object SvLivelockFreeArbiterImpl extends VlogModule {
        |    .io_in(selected), .io_out(io_chosen)
        |  );
        |
-       |`ifndef SYNTHESIS
-       |  always @(posedge clock) begin
-       |    if (!reset && !$$onehot(pointer)) begin
-       |      if (`PRINTF_COND_)
-       |        $$fwrite(32'h80000002,
-       |          "Assertion failed at %0t in %m: SvLivelockFreeArbiter pointer must be one-hot (pointer=%b)\\n",
-       |          $$time, pointer);
-       |      if (`ASSERT_VERBOSE_COND_) $$error;
-       |      if (`STOP_COND_) $$fatal;
-       |    end
-       |    if (!reset && advance_pointer && !($$onehot(next_pointer) && (|(next_pointer & io_in_valid)))) begin
-       |      if (`PRINTF_COND_)
-       |        $$fwrite(32'h80000002,
-       |          "Assertion failed at %0t in %m: SvLivelockFreeArbiter next_pointer must select one valid input (next_pointer=%b, valid=%b)\\n",
-       |          $$time, next_pointer, io_in_valid);
-       |      if (`ASSERT_VERBOSE_COND_) $$error;
-       |      if (`STOP_COND_) $$fatal;
-       |    end
-       |  end
-       |`endif
        |endmodule
        |""".stripMargin
 }
 
 /** Common inline Chisel adapter. With one input, valid/bits/ready pass through
-  * without a core or selection latency; chosen is zero even when idle. For
+  * without a core or additional latency; chosen is zero even when idle. For
   * multiple inputs, only the selected valid input is ready and idle bits are zero.
   * The multi-input core has an asynchronous reset.
-  * Both policies serve a continuously pending lane within n transfers
-  * if reset stays inactive and the sink keeps accepting. This is Decoupled,
-  * not Irrevocable: producers remain responsible for their payloads.
-  * selLatch registers only the choice, adds one cycle of selection latency,
-  * and holds a valid grant under backpressure. Continuous requests sustain
-  * one transfer per cycle, including a single requester. Newly arriving or
-  * withdrawn requests may introduce a selection bubble; no payload is buffered.
+  * Both policies serve a continuously pending lane within n transfers if
+  * reset stays inactive and the sink keeps accepting. This is Decoupled,
+  * not Irrevocable; no selection or payload pipeline is added.
   */
 class SvLivelockFreeArbiter[T <: Data](
-  gen: T, n: Int, roundRobin: Boolean = false, selLatch: Boolean = false
+  gen: T, n: Int, roundRobin: Boolean = false
 ) extends Module {
+  override def resetType: Module.ResetType.Type = Module.ResetType.Asynchronous
   require(n > 0, "SvLivelockFreeArbiter requires at least one input")
   val io = IO(new ArbiterIO(gen, n))
   override def desiredName: String = "SvLivelockFreeArbiterWrapper"
+
+  val core = Option.when(n > 1) {
+    require(gen.isWidthKnown && gen.getWidth > 0,
+      "SvLivelockFreeArbiter requires a known, positive data width when n > 1")
+    Module(new SvLivelockFreeArbiterImpl(gen.getWidth, n, roundRobin))
+  }
 
   if (n == 1) {
     io.out <> io.in.head
     io.chosen := 0.U
   } else {
-    require(gen.isWidthKnown && gen.getWidth > 0,
-      "SvLivelockFreeArbiter requires a known, positive data width when n > 1")
-    val core = Module(new SvLivelockFreeArbiterImpl(gen.getWidth, n, roundRobin, selLatch))
-    core.clock := clock
-    core.reset := reset.asAsyncReset
-    core.io.in.valid := VecInit(io.in.map(_.valid)).asUInt
-    core.io.in.bits := VecInit(io.in.map(_.bits)).asUInt
-    core.io.out.ready := io.out.ready
-    io.out.valid := core.io.out.valid
-    io.out.bits := core.io.out.bits.asTypeOf(gen)
-    io.chosen := core.io.chosen
-    io.in.zip(core.io.in.ready.asBools).foreach { case (lane, ready) => lane.ready := ready }
+    core.get.clock := clock
+    core.get.reset := reset.asAsyncReset
+    core.get.io.in.valid := VecInit(io.in.map(_.valid)).asUInt
+    core.get.io.in.bits := VecInit(io.in.map(_.bits)).asUInt
+    core.get.io.out.ready := io.out.ready
+    io.out.valid := core.get.io.out.valid
+    io.out.bits := core.get.io.out.bits.asTypeOf(gen)
+    io.chosen := core.get.io.chosen
+    io.in.zip(core.get.io.in.ready.asBools).foreach { case (lane, ready) => lane.ready := ready }
   }
 
   inlineInstance(this)
@@ -229,9 +202,9 @@ class SvLivelockFreeArbiter[T <: Data](
 // Keep the defaulted Data overload below the sequence overloads in priority:
 // Chisel Vec is both Data and Seq, including the result of Vec.toSeq.
 private[verilog] trait SvLivelockFreeArbiterConfigFactory {
-  /** Single-input arbitration needs no wrapper or SV core; allow inferred payload widths. */
+  /** Single-input io needs no wrapper or SV core; allow inferred payload widths. */
   def apply[T <: Data](
-    gen: T = UInt(32.W), n: Int = 2, roundRobin: Boolean = false, selLatch: Boolean = false
+    gen: T = UInt(32.W), n: Int = 2, roundRobin: Boolean = false
   )(
     implicit sourceInfo: SourceInfo
   ): ArbiterIO[T] = {
@@ -242,7 +215,7 @@ private[verilog] trait SvLivelockFreeArbiterConfigFactory {
       io.chosen := 0.U
       io
     } else {
-      Module(new SvLivelockFreeArbiter(gen, n, roundRobin, selLatch)).io
+      Module(new SvLivelockFreeArbiter(gen, n, roundRobin)).io
     }
   }
 }
@@ -253,62 +226,44 @@ object SvLivelockFreeArbiter extends SvLivelockFreeArbiterConfigFactory {
 
   def apply[T <: Data](in: Seq[DecoupledIO[T]], roundRobin: Boolean)(
     implicit sourceInfo: SourceInfo
-  ): DecoupledIO[T] = apply(in, roundRobin, selLatch = false)
-
-  def apply[T <: Data](in: Seq[DecoupledIO[T]], roundRobin: Boolean, selLatch: Boolean)(
-    implicit sourceInfo: SourceInfo
   ): DecoupledIO[T] = {
     require(in.nonEmpty, "SvLivelockFreeArbiter requires non-empty inputs")
     in.foreach(lane => requireIsHardware(lane, "SvLivelockFreeArbiter input"))
     if (in.size == 1) in.head
     else {
-      val arb = apply(chiselTypeOf(in.head.bits), in.size, roundRobin, selLatch)
+      val arb = apply(chiselTypeOf(in.head.bits), in.size, roundRobin)
       arb.in.zip(in).foreach { case (sink, source) => sink <> source }
       arb.out
     }
   }
 }
 
-/** Typed VIP view of the shared SvLivelockFreeArbiter core. */
-class SvVipArbiter[T <: Data](gen: T, size: Int, selLatch: Boolean = false)
-    extends SvLivelockFreeArbiter(gen, size, roundRobin = false, selLatch = selLatch) {
+/** VIP policy of the livelock-free core. */
+class SvVipArbiter[T <: Data](gen: T, size: Int)
+    extends SvLivelockFreeArbiter(gen, size, roundRobin = false) {
   override def desiredName: String = "SvVipArbiterWrapper"
 }
 
-// Lower priority than sequence overloads when the input is a Chisel Vec.
-private[verilog] trait SvVipArbiterConfigFactory {
-  def apply[T <: Data](gen: T = UInt(32.W), size: Int = 2, selLatch: Boolean = false)(
+object SvVipArbiter {
+  def apply[T <: Data](gen: T = UInt(32.W), size: Int = 2)(
     implicit sourceInfo: SourceInfo
-  ): ArbiterIO[T] = Module(new SvVipArbiter(gen, size, selLatch)).io
-}
+  ): ArbiterIO[T] = Module(new SvVipArbiter(gen, size)).io
 
-object SvVipArbiter extends SvVipArbiterConfigFactory {
   def apply[T <: Data](in: Seq[DecoupledIO[T]])(implicit sourceInfo: SourceInfo): DecoupledIO[T] =
-    apply(in, selLatch = false)
-
-  def apply[T <: Data](in: Seq[DecoupledIO[T]], selLatch: Boolean)(
-    implicit sourceInfo: SourceInfo
-  ): DecoupledIO[T] = SvLivelockFreeArbiter(in, roundRobin = false, selLatch = selLatch)
+    SvLivelockFreeArbiter(in, roundRobin = false)
 }
 
-/** Typed round-robin view of the shared SvLivelockFreeArbiter core. */
-class SvRRArbiter[T <: Data](gen: T, n: Int, selLatch: Boolean = false)
-    extends SvLivelockFreeArbiter(gen, n, roundRobin = true, selLatch = selLatch) {
+/** Round-robin policy of the livelock-free core. */
+class SvRRArbiter[T <: Data](gen: T, n: Int)
+    extends SvLivelockFreeArbiter(gen, n, roundRobin = true) {
   override def desiredName: String = "SvRRArbiterWrapper"
 }
 
-// Lower priority than sequence overloads when the input is a Chisel Vec.
-private[verilog] trait SvRRArbiterConfigFactory {
-  def apply[T <: Data](gen: T = UInt(32.W), n: Int = 2, selLatch: Boolean = false)(
+object SvRRArbiter {
+  def apply[T <: Data](gen: T = UInt(32.W), n: Int = 2)(
     implicit sourceInfo: SourceInfo
-  ): ArbiterIO[T] = Module(new SvRRArbiter(gen, n, selLatch)).io
-}
+  ): ArbiterIO[T] = Module(new SvRRArbiter(gen, n)).io
 
-object SvRRArbiter extends SvRRArbiterConfigFactory {
   def apply[T <: Data](in: Seq[DecoupledIO[T]])(implicit sourceInfo: SourceInfo): DecoupledIO[T] =
-    apply(in, selLatch = false)
-
-  def apply[T <: Data](in: Seq[DecoupledIO[T]], selLatch: Boolean)(
-    implicit sourceInfo: SourceInfo
-  ): DecoupledIO[T] = SvLivelockFreeArbiter(in, roundRobin = true, selLatch = selLatch)
+    SvLivelockFreeArbiter(in, roundRobin = true)
 }

@@ -29,6 +29,7 @@ class SvDefaultsSpec extends AnyFunSpec {
           Module(new SvSecdedDecoderImpl()) -> SvSecdedDecoderImpl,
           Module(new SvArbiterImpl()) -> SvArbiterImpl,
           Module(new SvLivelockFreeArbiterImpl()) -> SvLivelockFreeArbiterImpl,
+          Module(new SvFastArbiterImpl()) -> SvFastArbiterImpl,
           Module(new SvFastQueueD1Impl()) -> SvFastQueueD1Impl,
           Module(new SvFastQueueD2Impl()) -> SvFastQueueD2Impl,
           Module(new SvFastQueueD3Impl()) -> SvFastQueueD3Impl,
@@ -48,6 +49,7 @@ class SvDefaultsSpec extends AnyFunSpec {
 
     it("checks wrapper defaults, explicit arbiter dimensions and named parameter overrides") {
       ChiselStage.emitCHIRRTL(new Module {
+        override def resetType: Module.ResetType.Type = Module.ResetType.Asynchronous
         val mux = Module(new SvMux1H())
         val priority = Module(new SvPriorityMux())
         val arb = Module(new SvArbiter(UInt(32.W), 2))
@@ -82,10 +84,9 @@ class SvDefaultsSpec extends AnyFunSpec {
         val three = Module(new SvArbiter(UInt(32.W), n = 3))
         val rrThree = Module(new SvRRArbiter(UInt(32.W), n = 3))
         val vipThree = Module(new SvVipArbiter(UInt(32.W), size = 3))
-        val latched = Module(new SvLivelockFreeArbiter(UInt(32.W), 2, selLatch = true))
-        val latchedRR = Module(new SvRRArbiter(UInt(32.W), 2, selLatch = true))
-        val latchedVip = Module(new SvVipArbiter(UInt(32.W), 2, selLatch = true))
-        assert(Seq(latched, latchedRR, latchedVip).forall(_.io.out.bits.getWidth == 32))
+        val fast = Module(new SvFastArbiter(UInt(32.W), 2))
+        val latched = Module(new SvLatchFastArbiter(UInt(32.W), 2))
+        assert(Seq(fast, latched).forall(_.io.out.bits.getWidth == 32))
         val queueFive = Module(new SvFastQueue(size = 5))
         val mimoTwo = Module(new SvMimoQueue(enqNum = 2, deqNum = 2))
         val dnFive = Module(new SvFastQueueDNImpl(depth = 5))
@@ -101,15 +102,17 @@ class SvDefaultsSpec extends AnyFunSpec {
 
     it("supports omitted factory configuration while preserving payload type inference") {
       ChiselStage.emitCHIRRTL(new Module {
+        override def resetType: Module.ResetType.Type = Module.ResetType.Asynchronous
         val arb: ArbiterIO[UInt] = SvArbiter()
         val rr: ArbiterIO[UInt] = SvRRArbiter()
         val vip: ArbiterIO[UInt] = SvVipArbiter()
+        val fastWrapper: ArbiterIO[UInt] = SvFastArbiter()
+        val fastAlias: ArbiterIO[UInt] = xs.utils.FastArbiter()
+        assert(Seq(fastWrapper, fastAlias).forall(io => io.in.size == 2 && io.out.bits.getWidth == 32))
         val unified: ArbiterIO[UInt] = SvLivelockFreeArbiter()
         assert(unified.in.size == 2 && unified.out.bits.getWidth == 32)
-        val latched: ArbiterIO[UInt] = SvLivelockFreeArbiter(selLatch = true)
-        val latchedRR: ArbiterIO[UInt] = SvRRArbiter(selLatch = true)
-        val latchedVip: ArbiterIO[UInt] = SvVipArbiter(selLatch = true)
-        assert(Seq(latched, latchedRR, latchedVip).forall(io => io.in.size == 2 && io.out.bits.getWidth == 32))
+        val latched: ArbiterIO[UInt] = SvLatchFastArbiter()
+        assert(latched.in.size == 2 && latched.out.bits.getWidth == 32)
         val vipThree: ArbiterIO[UInt] = SvVipArbiter(size = 3)
         val arbThree: ArbiterIO[UInt] = SvArbiter(n = 3)
         val rrThree: ArbiterIO[UInt] = SvRRArbiter(n = 3)

@@ -13,7 +13,7 @@ import scala.util.Random
 
 private[test] case class VipCase(
   size: Int, width: Int = 17, shape: String = "bundle", api: String = "sv",
-  roundRobin: Boolean = false, selLatch: Boolean = false
+  roundRobin: Boolean = false
 )
 
 private[test] class VipPort(c: VipCase) extends Bundle {
@@ -30,17 +30,30 @@ private[test] class VipBank(cases: Seq[VipCase]) extends Module {
     val gen = chiselTypeOf(port.in.head.bits)
     val arb: ArbiterIO[Data] = if (c.roundRobin) {
       c.api match {
-        case "factory" => SvRRArbiter(gen, c.size, c.selLatch)
-        case "shared" => SvLivelockFreeArbiter(gen, c.size, roundRobin = true, selLatch = c.selLatch)
-        case "rr" => Module(new xs.utils.arb.RRArbiter(gen, c.size, c.selLatch)).io
-        case _ => Module(new SvRRArbiter(gen, c.size, c.selLatch)).io
+        case "factory" => SvRRArbiter(gen, c.size)
+        case "shared" => SvLivelockFreeArbiter(gen, c.size, roundRobin = true)
+        case "rr" => Module(new xs.utils.arb.RRArbiter(gen, c.size)).io
+        case _ => Module(new SvRRArbiter(gen, c.size)).io
       }
     } else c.api match {
+      case "core" =>
+        val arb = Wire(new ArbiterIO(gen, c.size))
+        val core = Module(new SvLivelockFreeArbiterImpl(c.width, c.size, c.roundRobin))
+        core.clock := clock
+        core.reset := reset.asAsyncReset
+        core.io.in.valid := VecInit(arb.in.map(_.valid)).asUInt
+        core.io.in.bits := VecInit(arb.in.map(_.bits)).asUInt
+        core.io.out.ready := arb.out.ready
+        arb.out.valid := core.io.out.valid
+        arb.out.bits := core.io.out.bits.asTypeOf(gen)
+        arb.chosen := core.io.chosen
+        arb.in.zip(core.io.in.ready.asBools).foreach { case (lane, ready) => lane.ready := ready }
+        arb
       case "vip" =>
-        Module(new VipArbiter(gen, c.size, c.selLatch)).io
-      case "factory" => SvVipArbiter(gen, c.size, c.selLatch)
-      case "shared" => SvLivelockFreeArbiter(gen, c.size, selLatch = c.selLatch)
-      case _ => Module(new SvVipArbiter(gen, c.size, c.selLatch)).io
+        Module(new VipArbiter(gen, c.size)).io
+      case "factory" => SvVipArbiter(gen, c.size)
+      case "shared" => SvLivelockFreeArbiter(gen, c.size)
+      case _ => Module(new SvVipArbiter(gen, c.size)).io
     }
     arb.in.zip(port.in).foreach { case (sink, in) => sink.valid := in.valid; sink.bits := in.bits }
     port.out <> arb.out
@@ -50,6 +63,7 @@ private[test] class VipBank(cases: Seq[VipCase]) extends Module {
 }
 
 private[test] class VipFactories extends Module {
+  override def resetType: Module.ResetType.Type = Module.ResetType.Asynchronous
   val io = IO(new Bundle {
     val in = Input(Vec(3, Valid(WrapperTestPayload(51, "vecBundle"))))
     val out = Vec(2, Decoupled(WrapperTestPayload(51, "vecBundle")))
@@ -249,8 +263,8 @@ class SvVipArbiterSpec extends SimTestSpec {
         try for (prefix <- Seq("", "soc_")) {
           GlobalData.prefix = prefix
           val cases = Seq(VipCase(2), VipCase(3, api = "vip"), VipCase(5, api = "vip"),
-            VipCase(3, api = "rr", roundRobin = true), VipCase(5, roundRobin = true, selLatch = true),
-            VipCase(3, api = "shared", selLatch = true))
+            VipCase(3, api = "rr", roundRobin = true), VipCase(5, roundRobin = true),
+            VipCase(3, api = "shared"))
           val expected = Seq("SvOHToMask", "SvPrefixReduceOR", "SvPriorityEncoder1H", "SvMux1H", "SvOHToUInt", "SvLivelockFreeArbiter").map(prefix + _)
           assert(new VlogRegistry().sources(SvLivelockFreeArbiterImpl).map(_.moduleName) == expected)
           val annotations = ChiselStage.elaborate(new VipBank(cases)).annotations.collect {
@@ -260,11 +274,13 @@ class SvVipArbiterSpec extends SimTestSpec {
           val rtl = ChiselStage.emitSystemVerilog(new VipBank(cases))
           val modules = "(?m)^\\s*module\\s+(\\w+)".r.findAllMatchIn(rtl).map(_.group(1)).toSeq
           assert(modules.sorted == (expected :+ "VipBank").sorted)
-          for (parameter <- Seq("ROUND_ROBIN", "SEL_LATCH"); value <- Seq(0, 1))
-            assert(rtl.contains(s".$parameter($value)"))
+          for (value <- Seq(0, 1)) assert(rtl.contains(s".ROUND_ROBIN($value)"))
+          assert(!rtl.contains("FAST"))
+          assert(!modules.exists(_.endsWith("SvFastArbiter")))
         } finally GlobalData.prefix = saved
       }
       ChiselStage.emitCHIRRTL(new Module {
+        override def resetType: Module.ResetType.Type = Module.ResetType.Asynchronous
         val vip: VipArbiter[UInt] = Module(new VipArbiter(UInt(8.W), 3))
         val conditional = Module(new ConditionVipArbiter(UInt(8.W), 3, (a: UInt, b: UInt) => a < b))
       })

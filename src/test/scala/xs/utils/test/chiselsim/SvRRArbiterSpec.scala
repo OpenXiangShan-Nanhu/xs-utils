@@ -79,6 +79,7 @@ private[test] class SvRRArbiterN1WrapperTop(gen: Data) extends Module {
 }
 
 private[test] class SvRRArbiterN1FactoryTop(gen: Data) extends Module {
+  override def resetType: Module.ResetType.Type = Module.ResetType.Asynchronous
   val io = IO(new SvRRArbiterN1Port(gen))
 
   private val arbiter = SvRRArbiter(gen, 1)
@@ -433,7 +434,7 @@ class SvRRArbiterSpec extends SimTestSpec {
         assert(registry.sources(SvLivelockFreeArbiterImpl) == sources, "closure must be deterministic")
         val arbiter = sources.last.text
         assert(arbiter.contains(s"${prefix}SvOHToMask #(.INPUT_SIZE(INPUT_SIZE), .HIGH_MASK(1)) u_higher_mask"))
-        for (instance <- Seq("u_first_valid", "u_first_higher")) {
+        for (instance <- Seq("u_first_valid", "u_first_priority")) {
           assert(arbiter.contains(s"${prefix}SvPriorityEncoder1H #(.INPUT_SIZE(INPUT_SIZE)) $instance"))
         }
         assert(arbiter.contains(s"${prefix}SvMux1H #(.DATA_WIDTH(DATA_WIDTH), .INPUT_SIZE(INPUT_SIZE)) u_out_bits"))
