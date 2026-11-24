@@ -36,6 +36,7 @@
 - 用 `typedef enum logic [...]` 与具名状态；推荐 `state_q/state_d` 区分当前状态与次态，已有一致命名可保留。
 - 使用符号状态，不靠裸数字、状态编码位运算或隐含赋值顺序表达转移。
 - **推荐 one-hot 状态编码**：状态向量通常每个状态占一 bit，枚举值逐个置位，复位也进入合法的一热状态。二进制等其他编码仅在已有固定编码、面积或工具约束等理由明确时采用并说明。
+- 在模块体内用 `localparam integer ST_IDLE_BIT = 0;` 这类具名索引定义各状态位。用定宽常量移位生成枚举值，例如 `ST_IDLE = 3'b1 << ST_IDLE_BIT`；正常状态译码直接用 `state_q[ST_IDLE_BIT]`，避免重复定义编码或使用裸数字索引。
 - 若实现依赖 one-hot 位语义，确认综合编码设置和结果；不能只凭 RTL 枚举值假定工具不会重编码。每个独立子 FSM 分别检查 one-hot，不要求多个并行 FSM 的状态拼接后只有一个 1。
 - 将协议事件定义清楚。例如完成转移若依赖握手，应检查实际接受事件而不只检查请求有效；不要擅自把示例中的 start/finish 当成通用协议。
 - 多个事件竞争同一次状态转移时，在同一状态分支用显式 if/else 优先级表达；不靠多个独立 if 对 state_d 的后写覆盖。独立并发事实则分别更新 flag，不能因状态转移优先级而丢失。
@@ -43,8 +44,8 @@
 ## 3. 默认三段式
 
 1. **状态寄存**：一个 `always_ff` 更新 `state_q`，使用非阻塞赋值；时钟、复位方式和复位状态遵守实际设计。
-2. **次态逻辑**：一个 `always_comb` 由 `state_q` 和输入计算 `state_d`；每个状态分支完整赋值一次，保留自环。
-3. **输出逻辑**：独立 `always_comb` 或简单连续表达式译码输出；不在这里更新状态寄存器。
+2. **次态逻辑**：统一使用 `always_comb`，通过 `case` 或 `if/else` 由 `state_q` 和输入计算 `state_d`；每个状态分支完整赋值一次，保留自环。
+3. **输出逻辑**：优先使用 `wire` + `assign` 译码，批量输出使用 generate 循环；只有 `case` 或多级分支更清晰时使用独立 `always_comb`。输出逻辑不更新状态寄存器。
 
 禁止为省代码写 `state_d = state_q; case (...) ...` 或在 case 前设置输出默认值后覆写。状态保持应在各分支中显式表达，输出用完整分支或每个信号一个完整表达式。
 
@@ -52,7 +53,7 @@
 
 ## 4. One-hot Moore 示例
 
-此例是路径明确的单任务控制，使用三 bit one-hot 状态和同步高有效复位；不规定其他模块的复位方式。start 在空闲状态被接受，finish 结束运行，完成状态保持到 ack；各状态均可自环。输出未额外寄存。并发或乱序任务不能直接套用该单任务流程，应先采用上述 flag 或子 FSM 建模。
+此例是路径明确的单任务控制，使用三 bit one-hot 状态和高有效异步复位。start 在空闲状态被接受，finish 结束运行，完成状态保持到 ack；各状态均可自环。输出未额外寄存。并发或乱序任务不能直接套用该单任务流程，应先采用上述 flag 或子 FSM 建模。
 
 ```systemverilog
 module fsm_example (
@@ -61,54 +62,71 @@ module fsm_example (
   input  wire  start,
   input  wire  finish,
   input  wire  ack,
-  output logic ready,
-  output logic busy,
-  output logic done
+  output wire  ready,
+  output wire  busy,
+  output wire  done
 );
+  localparam integer ST_IDLE_BIT = 0;
+  localparam integer ST_BUSY_BIT = 1;
+  localparam integer ST_DONE_BIT = 2;
+
   typedef enum logic [2:0] {
-    ST_IDLE = 3'b001,
-    ST_BUSY = 3'b010,
-    ST_DONE = 3'b100
+    ST_IDLE = 3'b1 << ST_IDLE_BIT,
+    ST_BUSY = 3'b1 << ST_BUSY_BIT,
+    ST_DONE = 3'b1 << ST_DONE_BIT
   } state_t;
 
   state_t state_q;
   state_t state_d;
 
-  always_ff @(posedge clk) begin
-    if (reset) state_q <= ST_IDLE;
-    else       state_q <= state_d;
+  always_ff @(posedge clk or posedge reset) begin
+    if (reset) begin
+      state_q <= ST_IDLE;
+    end else begin
+      state_q <= state_d;
+    end
   end
 
   always_comb begin
     case (state_q)
       ST_IDLE: begin
-        if (start) state_d = ST_BUSY;
-        else       state_d = ST_IDLE;
+        if (start) begin
+          state_d = ST_BUSY;
+        end else begin
+          state_d = ST_IDLE;
+        end
       end
+
       ST_BUSY: begin
-        if (finish) state_d = ST_DONE;
-        else        state_d = ST_BUSY;
+        if (finish) begin
+          state_d = ST_DONE;
+        end else begin
+          state_d = ST_BUSY;
+        end
       end
+
       ST_DONE: begin
-        if (ack) state_d = ST_IDLE;
-        else     state_d = ST_DONE;
+        if (ack) begin
+          state_d = ST_IDLE;
+        end else begin
+          state_d = ST_DONE;
+        end
       end
-      default: state_d = ST_IDLE;
+
+      default: begin
+        state_d = ST_IDLE;
+      end
     endcase
   end
 
-  always_comb begin
-    case (state_q)
-      ST_IDLE: {ready, busy, done} = 3'b100;
-      ST_BUSY: {ready, busy, done} = 3'b010;
-      ST_DONE: {ready, busy, done} = 3'b001;
-      default: {ready, busy, done} = 3'b000;
-    endcase
-  end
+  // Output decoding assumes a legal one-hot state after reset.
+  assign ready = state_q[ST_IDLE_BIT];
+  assign busy  = state_q[ST_BUSY_BIT];
+  assign done  = state_q[ST_DONE_BIT];
 endmodule
 ```
 
-各分支对 state_d、各输出 bit 分别赋值一次；状态寄存器的 reset/else 也是互斥的。组合逻辑不存在先默认赋值再覆盖。
+每个次态分支完整赋值一次 `state_d`，输出由当前状态位连续驱动，状态寄存器的复位和正常更新互斥。
 
 ## 5. 输出与复位语义
 
@@ -116,11 +134,12 @@ endmodule
 - 基于 state_d 的输出不等价于基于 state_q 的输出；新增输出寄存器也可能增加一个周期。修改前核对波形与延迟。
 - 需要寄存输出时，用明确的输出寄存器及其 next 逻辑，并验证是由当前状态还是转移事件决定；三段式本身不保证无毛刺输出。
 - 明确 done 是单周期脉冲还是保持到握手的电平，明确进入/离开状态当周期的有效值。示例 done 为保持型，不可直接套用于脉冲接口。
-- 复位极性、同步/异步、输出何时进入安全值及数据寄存器是否复位，按契约保持。异步输入或跨域事件需既有的 CDC 方案，不直接接入转移逻辑并假定安全。
+- 复位极性、输出何时进入安全值及数据寄存器是否复位，按契约保持；需要复位的状态寄存器使用异步复位。异步输入或跨域事件需既有的 CDC 方案。
 
 ## 6. 非法状态与未知值
 
 - 次态 case 和输出 case 都提供明确 default，不产生锁存器；普通 `case` 为默认写法。
+- 单比特译码只在合法 one-hot 状态下等价于整向量比较。次态可保留 `case (state_q)` 和 `default` 处理非法编码；若协议要求多热或未知状态下输出保持安全值，使用整向量译码或合法性门控。
 - 不用 `casex/casez` 通配符忽略状态未知位；不靠 full_case/parallel_case 或类似承诺隐藏缺失分支。使用 unique/priority 必须满足其真实条件，不能代替完整赋值或错误检测。
 - default 的恢复目标和输出必须由安全策略决定：回到空闲、进入错误态或保持安全锁定均可能合理。示例回到 ST_IDLE 并非所有设计的要求。
 - 安全 default 不应静默掩盖故障：验证中同时检测非法或未知状态；推荐的一热 FSM 在复位生效后检查 `$onehot(state_q)` 且状态不含未知位，不能用 `$onehot0` 放过全零。该检查逐 FSM 进行，不适用于允许多位同时有效的并发 flag。

@@ -2,40 +2,57 @@
 
 这些例子用于说明结构，不规定具体协议、数据宽度、器件或微架构。实例接线示例中的子模块需使用工程已有实现。
 
-## 等效注释的约定
-
-在批量或复杂计算块前写一至三行 Chisel 表达式，强调“整块做什么”，不复述循环展开。以下示例将 SV unpacked 数组对应到 Chisel Vec、packed 掩码对应到 UInt；参数在 Chisel 中对应 Scala 编译期值，REVERSE 对应 Boolean。
-
-- 批量变换用 `VecInit/map`，前缀用 `scanLeft`，归约用 `reduce` 或与真实结构一致的 `reduceTree`；明确 seed 和有效位宽。
-- Chisel 注释是语义摘要，不是改用单变量 SV 累加器的许可；显式数组阶段仍保留。
-- 对子模块只能在核实契约后用 `Mux1H/PriorityMux` 等概括选择行为。仅例化结构已知时标明结构示意，不能臆测 helper 的功能。
-- 对寄存更新写清周期、使能与复位，不能把组合映射注释直接套到时序块。不能精确覆盖时说明范围或拆成具名步骤，而非写无约束的“equivalent”。
-
 ## 单次赋值的边界
 
 ```systemverilog
-// 合规：互斥分支，每条执行路径只写一次。
+// 合规：case 的互斥分支完整赋值，每条执行路径只写一次。
+logic [WIDTH - 1:0] result;
+
 always_comb begin
-  if (select_a) result = a;
-  else          result = b;
+  case (select)
+    2'b00: begin
+      result = a;
+    end
+    2'b01: begin
+      result = b;
+    end
+    default: begin
+      result = c;
+    end
+  endcase
 end
 
 // 不合规：select_a 为真时，同一组 bit 被写两次。
 always_comb begin
   result = b;
-  if (select_a) result = a;
+  if (select_a) begin
+    result = a;
+  end
 end
 ```
 
-- 独立 `if (a) out = ...; if (b) out = ...;` 不是天然互斥。
+- 两个分别以 `a`、`b` 为条件并写入 `out` 的独立 `if` 不是天然互斥。
 - `out = '0; out[idx] = value;` 也会重复写 bit，不能用“默认值”解释为合规。
 - 按目标位循环并用完整 if/else 可以合规；对未知索引、越界值仍须保持预期语义，不能仅以二态测试推断等价。
-- 函数中 `sum = a + b; if (wrap) sum = sum - limit;` 同样违规；改用独立的 `raw_sum` 和单次产生的结果。
+- 函数中先赋值 `sum = a + b;`，再在 `wrap` 为真时改写 `sum`，同样违规；改用独立的 `raw_sum` 和单次产生的结果。
 - 时序 reset 分支和 else 更新分支互斥，允许给同一寄存器赋值；没有使能时保持不写，无需额外自赋值。
 
-## 参数选择与过程式循环
+## 表达式拆分
 
-以下为完整示例，仅演示配置位于外层、信号不在循环内声明：
+每个 SV 表达式优先一行，最多两行。把可独立检查的条件命名，最终表达式只组合这些条件。例如，将读写分支和公共条件分开，便于从覆盖率报告定位是哪一类请求或资格条件未命中。
+
+```systemverilog
+wire header_ok = param_ok && !corrupt;
+wire read_ok   = is_read && full_beat && exact_mask;
+wire write_ok  = is_write && mask_within_lanes;
+wire legal     = header_ok && aligned && (read_ok || write_ok);
+```
+
+位宽相关的中间结果用显式类型或位宽；拆嵌套选择时保留分支优先级和 `X` 合并行为。短且语义直接的握手、归约或二选一保持原状，不为行数引入无意义的转接信号。
+
+## 参数选择与 generate 连续赋值
+
+以下完整示例将配置选择放在外层，直接使用 generate if 和 for，省略 `generate/endgenerate`，以 `wire` 和 `assign` 完成逐元素映射：
 
 ```systemverilog
 module lane_order #(
@@ -43,26 +60,19 @@ module lane_order #(
   parameter integer WIDTH = 8,
   parameter bit REVERSE = 0
 ) (
-  input  wire  [WIDTH - 1:0] data_in [N],
-  output logic [WIDTH - 1:0] data_out [N]
+  input  wire [WIDTH - 1:0] data_in [N],
+  output wire [WIDTH - 1:0] data_out [N]
 );
   // N >= 1, WIDTH >= 1.
-  // Chisel equivalent: data_out := VecInit(if (REVERSE) data_in.reverse else data_in)
-  generate
-    if (REVERSE) begin : reverse_order
-      always_comb begin
-        for (integer i = 0; i < N; i++) begin
-          data_out[i] = data_in[N - 1 - i];
-        end
-      end
-    end else begin : original_order
-      always_comb begin
-        for (integer i = 0; i < N; i++) begin
-          data_out[i] = data_in[i];
-        end
-      end
+  if (REVERSE) begin : reverse_order
+    for (genvar i = 0; i < N; i++) begin : gen_lane
+      assign data_out[i] = data_in[N - 1 - i];
     end
-  endgenerate
+  end else begin : original_order
+    for (genvar i = 0; i < N; i++) begin : gen_lane
+      assign data_out[i] = data_in[i];
+    end
+  end
 endmodule
 ```
 
@@ -78,15 +88,11 @@ module array_sum #(
   output wire [SUM_WIDTH - 1:0] total
 );
   // N >= 1, WIDTH >= 1; SUM_WIDTH must hold the full unsigned sum.
-  logic [SUM_WIDTH - 1:0] sum_stage [N + 1];
+  wire [SUM_WIDTH - 1:0] sum_stage [N + 1];
 
-  // Chisel equivalent: sum_stage := VecInit(data.scanLeft(0.U(SUM_WIDTH.W))
-  //   ((s, x) => s + x.pad(SUM_WIDTH))); total := sum_stage.last
-  always_comb begin
-    sum_stage[0] = '0;
-    for (integer i = 0; i < N; i++) begin
-      sum_stage[i + 1] = sum_stage[i] + SUM_WIDTH'(data[i]);
-    end
+  assign sum_stage[0] = '0;
+  for (genvar i = 0; i < N; i++) begin : gen_sum
+    assign sum_stage[i + 1] = sum_stage[i] + SUM_WIDTH'(data[i]);
   end
   assign total = sum_stage[N];
 endmodule
@@ -100,58 +106,52 @@ endmodule
 - 树形实现将输入叶子和内部节点的索引域分开，按依赖顺序赋值一次；非二次幂时只对缺失叶子补中性元素。
 - 空输入是接口契约问题：若允许 N=0，要单独用 generate if 定义结果与合法声明；不能依赖负范围或越界访问的工具行为。
 
-## 普通矩阵计算与批量模块例化默认分离
+## 矩阵计算与批量模块例化
 
 ```systemverilog
-logic [INPUTS - 1:0] match [OUTPUTS];
+wire [INPUTS - 1:0] match [OUTPUTS];
 wire [WIDTH - 1:0] selected [OUTPUTS];
 
-// Chisel equivalent (each output o):
-//   match(o) := VecInit((0 until INPUTS).map(i => valid(i) && (tag(i) === target(o)))).asUInt
-always_comb begin
-  for (integer o = 0; o < OUTPUTS; o++) begin
-    for (integer i = 0; i < INPUTS; i++) begin
-      match[o][i] = valid[i] && (tag[i] == target[o]);
-    end
+for (genvar o = 0; o < OUTPUTS; o++) begin : gen_selector
+  for (genvar i = 0; i < INPUTS; i++) begin : gen_match
+    assign match[o][i] = valid[i] && (tag[i] == target[o]);
   end
-end
 
-// Chisel-style structure: Seq.fill(OUTPUTS)(Module(new DataSelector(WIDTH, INPUTS)))
-// DataSelector denotes the project-equivalent helper, not a built-in selection policy.
-generate
-  for (genvar o = 0; o < OUTPUTS; o++) begin : gen_selector
-    data_selector #(.WIDTH(WIDTH), .INPUTS(INPUTS)) u_select (
-      .select(match[o]), .data(data), .result(selected[o])
-    );
-  end
-endgenerate
+  data_selector #(
+    .WIDTH(WIDTH),
+    .INPUTS(INPUTS)
+  ) u_select (
+    .select(match[o]),
+    .data(data),
+    .result(selected[o])
+  );
+end
 ```
 
-`data_selector` 代表既有辅助模块；是否一热、优先级或多命中合并由接口规定，不能在重构时自行改变。注释中的 `DataSelector` 仅代表工程对应的 Chisel helper，此处只示意批量例化结构，不声明选择算法等价。普通矩阵映射默认在过程式循环计算，矩阵和结果向量在外部声明；这不是禁止例化循环包含相关的常量切片或补零赋值。
-
+`data_selector` 代表既有辅助模块；是否一热、优先级或多命中合并由接口规定，不能在重构时自行改变。矩阵和结果向量在外部声明，每行匹配计算与对应实例放在同一个 generate 循环中。
 
 ## genvar 相关切片与局部连线
 
-当每个 lane 的切片边界、宽度或参数依赖循环索引时，`generate for` 可让常量表达式和相关连线保持在一起；简单独立的逐 lane 赋值若这样更清楚，也允许使用。不要为了避免 generate 内赋值，把自然的切片改成逐 bit 过程式循环。
+逐 lane 连线优先使用 generate 循环和连续赋值；切片边界、宽度或参数依赖循环索引时，使用 `genvar` 保持常量表达式和相关连线在一起。不要为了避免 generate 内赋值，把自然的切片改成逐 bit 过程式循环。
 
 ```systemverilog
 // ENQ_NUM >= 1, DEPTH >= ENQ_NUM; io_enq_valid has ENQ_NUM bits.
 localparam integer ADDR_WIDTH = (DEPTH == 1) ? 1 : $clog2(DEPTH);
 wire [ADDR_WIDTH:0] enq_rank [ENQ_NUM];
 
-// Chisel equivalent: enq_rank := VecInit((0 until ENQ_NUM).map(e =>
-//   PopCount(io_enq_valid.asBools.take(e)).pad(ADDR_WIDTH + 1)))
+// Lane 0 has an empty prefix; no popcount instance is needed.
 assign enq_rank[0] = '0;
-generate
-  for (genvar e = 1; e < ENQ_NUM; e++) begin : gen_rank_count
-    localparam integer PREFIX_WIDTH = $clog2(e + 1);
-    assign enq_rank[e][ADDR_WIDTH:PREFIX_WIDTH] = '0;
-    SvPopcount #(.INPUT_SIZE(e)) u_rank_count (
-      .io_in(io_enq_valid[e - 1:0]),
-      .io_out(enq_rank[e][PREFIX_WIDTH - 1:0])
-    );
-  end
-endgenerate
+
+for (genvar e = 1; e < ENQ_NUM; e++) begin : gen_rank_count
+  localparam integer PREFIX_WIDTH = $clog2(e + 1);
+  assign enq_rank[e][ADDR_WIDTH:PREFIX_WIDTH] = '0;
+  SvPopcount #(
+    .INPUT_SIZE(e)
+  ) u_rank_count (
+    .io_in(io_enq_valid[e - 1:0]),
+    .io_out(enq_rank[e][PREFIX_WIDTH - 1:0])
+  );
+end
 ```
 
 - `SvPopcount` 的输出宽度为 `$clog2(INPUT_SIZE + 1)`；`e` 与 `PREFIX_WIDTH` 在展开时均为常量，补零和子模块输出驱动不重叠的 bit。
