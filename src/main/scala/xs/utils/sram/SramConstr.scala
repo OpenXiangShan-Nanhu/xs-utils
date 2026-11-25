@@ -25,9 +25,9 @@ case class SramTimingMeta[T <: Data](
     if(intvl > 1) {
       strQueue.addOne(AnyConstr(s"# $name"))
       strQueue.addOne(CreateGeneratedClock(
+        name = Some(s"${name}_clk"),
         target = ClockGate.clockGateCellInfo.clockOutPin(cgPath),
         source = ClockGate.clockGateCellInfo.clockInPin(cgPath),
-        divide = Some(intvl),
         edges = Some(s"1 2 ${2 * intvl + 1}")
       ))
     }
